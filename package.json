@@ -1,0 +1,26 @@
+{
+  "name": "deadlock-detection-system",
+  "version": "1.0.0",
+  "description": "Intelligent Operating System Deadlock Detection & Recovery Platform",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "server": "nodemon server/server.js",
+    "client": "npm run dev --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "seed": "node server/seed.js",
+    "install-all": "npm install && npm install --prefix server && npm install --prefix client"
+  },
+  "keywords": [
+    "deadlock",
+    "operating-system",
+    "bankers-algorithm",
+    "resource-allocation-graph"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.3"
+  }
+}

@@ -107,12 +107,6 @@ const runRecovery = async (req, res) => {
   }
 };
 
-    res.json(recoveryResult);
-  } catch (error) {
-    res.status(500).json({ message: 'Error performing deadlock recovery.', error: error.message });
-  }
-};
-
 module.exports = {
   runDetection,
   runBankers,

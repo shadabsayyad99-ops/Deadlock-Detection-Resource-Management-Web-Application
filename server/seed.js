@@ -37,10 +37,10 @@ const seedData = async () => {
 
     // Create Sample Processes for Admin
     const sampleProcesses = [
-      { processId: 'P1', name: 'Web Server Process', priority: 1, status: 'RUNNING', userId: adminUser._id },
-      { processId: 'P2', name: 'Database Query Engine', priority: 2, status: 'WAITING', userId: adminUser._id },
-      { processId: 'P3', name: 'Background Backup Task', priority: 3, status: 'READY', userId: adminUser._id },
-      { processId: 'P4', name: 'Analytics Worker', priority: 2, status: 'BLOCKED', userId: adminUser._id }
+      { processId: 'P0', name: 'Web Server Process', priority: 1, status: 'RUNNING', userId: adminUser._id },
+      { processId: 'P1', name: 'Database Query Engine', priority: 2, status: 'WAITING', userId: adminUser._id },
+      { processId: 'P2', name: 'Background Backup Task', priority: 3, status: 'READY', userId: adminUser._id },
+      { processId: 'P3', name: 'Analytics Worker', priority: 2, status: 'BLOCKED', userId: adminUser._id }
     ];
     await Process.insertMany(sampleProcesses);
 
@@ -57,7 +57,7 @@ const seedData = async () => {
       {
         name: 'Operating Systems Lab 1 - Safe State Scenario',
         userId: adminUser._id,
-        processes: ['P1', 'P2', 'P3'],
+        processes: ['P0', 'P1', 'P2'],
         resources: ['R1', 'R2', 'R3'],
         allocationMatrix: [[0, 1, 0], [2, 0, 0], [3, 0, 2]],
         requestMatrix: [[0, 0, 0], [2, 0, 2], [0, 0, 0]],

@@ -1,7 +1,7 @@
 const { detectDeadlock } = require('../algorithms/deadlockDetection');
 const { checkSafety, requestResource } = require('../algorithms/bankersAlgorithm');
 const { detectCyclesInRAG } = require('../algorithms/cycleDetection');
-const { recoverByTermination, recoverByPreemption } = require('../algorithms/recovery');
+const { recoverByTermination, recoverByPreemption, autoRecoverDeadlock } = require('../algorithms/recovery');
 const Simulation = require('../models/Simulation');
 
 const runDetection = async (req, res) => {
@@ -89,15 +89,23 @@ const runRecovery = async (req, res) => {
     }
 
     let recoveryResult;
-    if (strategy === 'termination') {
+    if (strategy === 'auto') {
+      recoveryResult = autoRecoverDeadlock(processes, resources, available, allocation, request);
+    } else if (strategy === 'termination') {
       if (!targetProcess) return res.status(400).json({ message: 'Process to terminate must be specified.' });
       recoveryResult = recoverByTermination(processes, resources, available, allocation, request, targetProcess);
     } else if (strategy === 'preemption') {
       if (!targetProcess || !preemptResource) return res.status(400).json({ message: 'Target process and resource must be specified for preemption.' });
       recoveryResult = recoverByPreemption(processes, resources, available, allocation, request, targetProcess, preemptResource, count || 1);
     } else {
-      return res.status(400).json({ message: 'Invalid recovery strategy specified. Use "termination" or "preemption".' });
+      return res.status(400).json({ message: 'Invalid recovery strategy specified. Use "auto", "termination", or "preemption".' });
     }
+
+    res.json(recoveryResult);
+  } catch (error) {
+    res.status(500).json({ message: 'Error performing deadlock recovery.', error: error.message });
+  }
+};
 
     res.json(recoveryResult);
   } catch (error) {

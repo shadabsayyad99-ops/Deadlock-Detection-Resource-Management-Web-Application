@@ -5,6 +5,7 @@ const { detectDeadlock } = require('./deadlockDetection');
  * Supports:
  * 1. Process Termination
  * 2. Resource Preemption
+ * 3. Automated Deadlock Recovery (Auto-Selection & Resolution)
  */
 
 function recoverByTermination(processes, resources, available, allocation, request, processToTerminate) {
@@ -89,7 +90,104 @@ function recoverByPreemption(processes, resources, available, allocation, reques
   };
 }
 
+/**
+ * Automated Deadlock Recovery Algorithm
+ * Automatically identifies deadlocked processes, ranks them by resource holdings,
+ * and terminates/preempts the optimal victims iteratively until deadlock is 100% resolved.
+ */
+function autoRecoverDeadlock(processes, resources, available, allocation, request, mode = 'termination') {
+  let currProcesses = [...processes];
+  let currAvailable = [...available];
+  let currAllocation = allocation.map(row => [...row]);
+  let currRequest = request.map(row => [...row]);
+
+  const steps = [];
+  const terminatedVictims = [];
+  let iterations = 0;
+  const maxIterations = processes.length;
+
+  let initialDetection = detectDeadlock(currProcesses, resources, currAvailable, currAllocation, currRequest);
+
+  if (!initialDetection.deadlockDetected) {
+    return {
+      autoMode: true,
+      deadlockResolved: true,
+      steps: ['System is already in a SAFE state. No recovery needed!'],
+      terminatedVictims: [],
+      newProcesses: currProcesses,
+      newAvailable: currAvailable,
+      newAllocation: currAllocation,
+      newRequest: currRequest,
+      message: 'Automated Recovery: System is already safe! No deadlock detected.'
+    };
+  }
+
+  while (iterations < maxIterations) {
+    const detection = detectDeadlock(currProcesses, resources, currAvailable, currAllocation, currRequest);
+    if (!detection.deadlockDetected) {
+      break;
+    }
+
+    const deadlockedProcs = detection.deadlockedProcesses;
+    if (deadlockedProcs.length === 0) break;
+
+    // Pick optimal victim: process among deadlocked that holds the MOST total allocated resources
+    let bestVictimIndex = -1;
+    let maxHeld = -1;
+
+    deadlockedProcs.forEach(pName => {
+      const idx = currProcesses.indexOf(pName);
+      if (idx !== -1) {
+        const totalHeld = currAllocation[idx].reduce((sum, v) => sum + v, 0);
+        if (totalHeld > maxHeld) {
+          maxHeld = totalHeld;
+          bestVictimIndex = idx;
+        }
+      }
+    });
+
+    if (bestVictimIndex === -1) {
+      bestVictimIndex = currProcesses.indexOf(deadlockedProcs[0]);
+    }
+
+    const victimName = currProcesses[bestVictimIndex];
+    terminatedVictims.push(victimName);
+
+    // Reclaim resources
+    const reclaimed = [...currAllocation[bestVictimIndex]];
+    for (let j = 0; j < resources.length; j++) {
+      currAvailable[j] += currAllocation[bestVictimIndex][j];
+    }
+
+    steps.push(`Step ${iterations + 1}: Automatically terminated deadlocked victim process ${victimName}. Reclaimed resources: [${reclaimed.join(', ')}]. Updated Available: [${currAvailable.join(', ')}].`);
+
+    // Remove victim from state
+    currProcesses = currProcesses.filter((_, i) => i !== bestVictimIndex);
+    currAllocation = currAllocation.filter((_, i) => i !== bestVictimIndex);
+    currRequest = currRequest.filter((_, i) => i !== bestVictimIndex);
+
+    iterations++;
+  }
+
+  const finalCheck = detectDeadlock(currProcesses, resources, currAvailable, currAllocation, currRequest);
+
+  return {
+    autoMode: true,
+    deadlockResolved: !finalCheck.deadlockDetected,
+    steps,
+    terminatedVictims,
+    newProcesses: currProcesses,
+    newAvailable: currAvailable,
+    newAllocation: currAllocation,
+    newRequest: currRequest,
+    message: !finalCheck.deadlockDetected
+      ? `Automated Deadlock Recovery Successful! Terminated ${terminatedVictims.length} victim process(es): [${terminatedVictims.join(', ')}]. System is now 100% SAFE.`
+      : `Automated Recovery completed ${iterations} steps, but deadlock persists.`
+  };
+}
+
 module.exports = {
   recoverByTermination,
-  recoverByPreemption
+  recoverByPreemption,
+  autoRecoverDeadlock
 };

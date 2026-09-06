@@ -148,32 +148,41 @@ const ResourceAllocationGraphPage = () => {
       const flowNodes = [];
       const flowEdges = [];
 
-      // Calculate process allocation totals for node positioning
+      const pCount = processes.length || 1;
+      const rCount = resources.length || 1;
+      const pSpacing = Math.max(90, Math.min(140, 500 / pCount));
+      const rSpacing = Math.max(90, Math.min(140, 500 / rCount));
+
+      // Calculate process nodes
       processes.forEach((p, idx) => {
+        const isDeadlockedNode = res.data.hasCycle && res.data.cycles.some(cPath => cPath.includes(p));
+
         flowNodes.push({
           id: p,
-          data: { label: `${p}` },
-          position: { x: 120, y: 80 + idx * 130 },
+          data: { label: isDeadlockedNode ? `${p}\n(DEADLOCKED)` : `${p}` },
+          position: { x: 100, y: 50 + idx * pSpacing },
           style: {
-            background: '#ffffff',
-            color: '#312e81',
-            border: '3px solid #6366f1',
+            background: isDeadlockedNode ? '#fee2e2' : '#ffffff',
+            color: isDeadlockedNode ? '#991b1b' : '#312e81',
+            border: isDeadlockedNode ? '4px solid #dc2626' : '3px solid #6366f1',
             borderRadius: '50%',
-            width: 75,
-            height: 75,
+            width: 85,
+            height: 85,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            textAlign: 'center',
             fontWeight: '900',
-            fontSize: '15px',
-            boxShadow: '0 10px 15px -3px rgba(99, 102, 241, 0.2)'
+            fontSize: '14px',
+            whiteSpace: 'pre-wrap',
+            boxShadow: isDeadlockedNode ? '0 0 20px rgba(220, 38, 38, 0.4)' : '0 10px 15px -3px rgba(99, 102, 241, 0.2)'
           }
         });
       });
 
+      // Calculate resource nodes
       resources.forEach((r, idx) => {
         const total = totalInstances[idx] !== undefined ? totalInstances[idx] : 1;
-        // calculate allocated
         let allocSum = 0;
         processes.forEach((_, pIdx) => {
           if (allocation[pIdx] && allocation[pIdx][idx] !== undefined) {
@@ -181,18 +190,19 @@ const ResourceAllocationGraphPage = () => {
           }
         });
         const avail = Math.max(0, total - allocSum);
+        const isCycleResource = res.data.hasCycle && res.data.cycles.some(cPath => cPath.includes(r));
 
         flowNodes.push({
           id: r,
           data: { label: `${r}\n[Avail: ${avail} / Total: ${total}]` },
-          position: { x: 500, y: 80 + idx * 130 },
+          position: { x: 520, y: 50 + idx * rSpacing },
           style: {
-            background: '#ffffff',
+            background: isCycleResource ? '#fef3c7' : '#ffffff',
             color: '#78350f',
-            border: '3px solid #f59e0b',
-            borderRadius: '16px',
-            width: 140,
-            height: 80,
+            border: isCycleResource ? '4px solid #d97706' : '3px solid #f59e0b',
+            borderRadius: '18px',
+            width: 150,
+            height: 85,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -200,7 +210,7 @@ const ResourceAllocationGraphPage = () => {
             fontWeight: '800',
             fontSize: '13px',
             whiteSpace: 'pre-wrap',
-            boxShadow: '0 10px 15px -3px rgba(245, 158, 11, 0.2)'
+            boxShadow: isCycleResource ? '0 0 15px rgba(217, 119, 6, 0.3)' : '0 10px 15px -3px rgba(245, 158, 11, 0.2)'
           }
         });
       });

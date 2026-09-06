@@ -31,7 +31,7 @@ const ProcessManagement = () => {
       setFormData({ processId: proc.processId, name: proc.name, priority: proc.priority, status: proc.status });
     } else {
       setEditingId(null);
-      setFormData({ processId: `P${processes.length + 1}`, name: '', priority: 1, status: 'READY' });
+      setFormData({ processId: `P${processes.length}`, name: '', priority: 1, status: 'READY' });
     }
     setShowModal(true);
   };

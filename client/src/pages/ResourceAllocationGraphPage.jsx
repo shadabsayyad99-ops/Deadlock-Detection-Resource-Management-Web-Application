@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { deadlockAPI } from '../services/api';
+import { deadlockAPI, processAPI, resourceAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { GitFork, AlertTriangle, CheckCircle, RefreshCw, Plus, Trash2, Sparkles, Bot, HelpCircle } from 'lucide-react';
 import {
@@ -16,7 +16,8 @@ const ResourceAllocationGraphPage = () => {
 
   const [processes, setProcesses] = useState(['P0', 'P1', 'P2']);
   const [resources, setResources] = useState(['R1', 'R2', 'R3']);
-  const [totalInstances, setTotalInstances] = useState([2, 1, 2]);
+  const [resourceNames, setResourceNames] = useState(['CPU Core', 'Printer Unit', 'Memory Buffer']);
+  const [totalInstances, setTotalInstances] = useState([3, 2, 4]);
 
   const [allocation, setAllocation] = useState([
     [1, 0, 1],
@@ -35,12 +36,69 @@ const ResourceAllocationGraphPage = () => {
   const [cycleResult, setCycleResult] = useState(null);
   const [recoveryLog, setRecoveryLog] = useState(null);
   const [showGuide, setShowGuide] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
+
+  // Fetch real processes and resources from DB on mount
+  const fetchDBData = async () => {
+    setLoadingData(true);
+    try {
+      const [procRes, resRes] = await Promise.all([
+        processAPI.getAll(),
+        resourceAPI.getAll()
+      ]);
+
+      if (procRes.data && procRes.data.length > 0) {
+        const pList = procRes.data.map(p => p.processId);
+        setProcesses(pList);
+      }
+
+      if (resRes.data && resRes.data.length > 0) {
+        const rList = resRes.data.map(r => r.resourceId);
+        const rNames = resRes.data.map(r => r.name);
+        const rTotals = resRes.data.map(r => r.totalInstances || 1);
+        setResources(rList);
+        setResourceNames(rNames);
+        setTotalInstances(rTotals);
+      }
+
+      showNotification('Synced graph with database processes and resources', 'info');
+    } catch (err) {
+      console.error('Failed to fetch DB data for RAG', err);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDBData();
+  }, []);
+
+  // Ensure matrices match current process and resource array lengths
+  useEffect(() => {
+    const pCount = processes.length;
+    const rCount = resources.length;
+
+    setAllocation(prev => {
+      const newMat = Array.from({ length: pCount }, (_, i) =>
+        Array.from({ length: rCount }, (_, j) => (prev[i] && prev[i][j] !== undefined ? prev[i][j] : (i === j ? 1 : 0)))
+      );
+      return newMat;
+    });
+
+    setRequest(prev => {
+      const newMat = Array.from({ length: pCount }, (_, i) =>
+        Array.from({ length: rCount }, (_, j) => (prev[i] && prev[i][j] !== undefined ? prev[i][j] : (i !== j && (i + j) % 2 === 1 ? 1 : 0)))
+      );
+      return newMat;
+    });
+  }, [processes.length, resources.length]);
 
   // Preset Loaders
   const loadPreset = (type) => {
     if (type === 'safe') {
       setProcesses(['P0', 'P1', 'P2']);
       setResources(['R1', 'R2', 'R3']);
+      setResourceNames(['CPU Core', 'Printer Unit', 'Memory Buffer']);
       setTotalInstances([3, 3, 2]);
       setAllocation([
         [0, 1, 0],
@@ -56,6 +114,7 @@ const ResourceAllocationGraphPage = () => {
     } else if (type === 'deadlock') {
       setProcesses(['P0', 'P1']);
       setResources(['R1', 'R2']);
+      setResourceNames(['CPU Core', 'Printer Unit']);
       setTotalInstances([1, 1]);
       setAllocation([
         [1, 0],
@@ -69,6 +128,7 @@ const ResourceAllocationGraphPage = () => {
     } else if (type === 'multi') {
       setProcesses(['P0', 'P1', 'P2', 'P3']);
       setResources(['R1', 'R2', 'R3']);
+      setResourceNames(['CPU Core', 'Printer Unit', 'Memory Buffer']);
       setTotalInstances([2, 2, 2]);
       setAllocation([
         [0, 1, 0],
@@ -114,8 +174,6 @@ const ResourceAllocationGraphPage = () => {
   const addProcess = () => {
     const pName = `P${processes.length}`;
     setProcesses([...processes, pName]);
-    setAllocation([...allocation, new Array(resources.length).fill(0)]);
-    setRequest([...request, new Array(resources.length).fill(0)]);
     showNotification(`Added process ${pName}`, 'info');
   };
 
@@ -125,16 +183,13 @@ const ResourceAllocationGraphPage = () => {
       return;
     }
     setProcesses(processes.slice(0, -1));
-    setAllocation(allocation.slice(0, -1));
-    setRequest(request.slice(0, -1));
   };
 
   const addResource = () => {
     const rName = `R${resources.length + 1}`;
     setResources([...resources, rName]);
+    setResourceNames([...resourceNames, `Resource ${resources.length + 1}`]);
     setTotalInstances([...totalInstances, 1]);
-    setAllocation(allocation.map(row => [...row, 0]));
-    setRequest(request.map(row => [...row, 0]));
     showNotification(`Added resource ${rName}`, 'info');
   };
 
@@ -144,9 +199,8 @@ const ResourceAllocationGraphPage = () => {
       return;
     }
     setResources(resources.slice(0, -1));
+    setResourceNames(resourceNames.slice(0, -1));
     setTotalInstances(totalInstances.slice(0, -1));
-    setAllocation(allocation.map(row => row.slice(0, -1)));
-    setRequest(request.map(row => row.slice(0, -1)));
   };
 
   const buildGraph = useCallback(async () => {
@@ -165,39 +219,48 @@ const ResourceAllocationGraphPage = () => {
 
       const pCount = processes.length || 1;
       const rCount = resources.length || 1;
-      const pSpacing = Math.max(100, Math.min(150, 480 / pCount));
-      const rSpacing = Math.max(100, Math.min(150, 480 / rCount));
+      const pSpacing = Math.max(110, Math.min(160, 520 / pCount));
+      const rSpacing = Math.max(110, Math.min(160, 520 / rCount));
 
-      // 1. Process Nodes (Circles - Left Column X: 120)
+      // 1. Process Nodes (Left Column X: 140)
       processes.forEach((p, idx) => {
         const isDeadlockedNode = res.data.hasCycle && res.data.cycles.some(cPath => cPath.includes(p));
 
         flowNodes.push({
           id: p,
-          data: { label: isDeadlockedNode ? `${p}\nDEADLOCKED` : `${p}` },
-          position: { x: 120, y: 60 + idx * pSpacing },
+          data: {
+            label: (
+              <div className="flex flex-col items-center justify-center">
+                <span className="text-base font-black tracking-wide">{p}</span>
+                {isDeadlockedNode && (
+                  <span className="mt-1 px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono text-[9px] font-black uppercase tracking-wider shadow-xs">
+                    DEADLOCK
+                  </span>
+                )}
+              </div>
+            )
+          },
+          position: { x: 140, y: 50 + idx * pSpacing },
           style: {
-            background: isDeadlockedNode ? '#fee2e2' : '#ffffff',
+            background: isDeadlockedNode ? '#fef2f2' : '#ffffff',
             color: isDeadlockedNode ? '#991b1b' : '#312e81',
-            border: isDeadlockedNode ? '4px solid #dc2626' : '4px solid #6366f1',
+            border: isDeadlockedNode ? '4px solid #ef4444' : '3.5px solid #6366f1',
             borderRadius: '50%',
-            width: 90,
-            height: 90,
+            width: 85,
+            height: 85,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
-            fontWeight: '900',
-            fontSize: '15px',
-            whiteSpace: 'pre-wrap',
-            boxShadow: isDeadlockedNode ? '0 0 25px rgba(220, 38, 38, 0.5)' : '0 10px 15px -3px rgba(99, 102, 241, 0.25)'
+            boxShadow: isDeadlockedNode ? '0 0 25px rgba(239, 68, 68, 0.45)' : '0 10px 15px -3px rgba(99, 102, 241, 0.2)'
           }
         });
       });
 
-      // 2. Resource Nodes (Rectangles - Right Column X: 520)
+      // 2. Resource Nodes (Right Column X: 540)
       resources.forEach((r, idx) => {
         const total = totalInstances[idx] !== undefined ? totalInstances[idx] : 1;
+        const rName = resourceNames[idx] || r;
         let allocSum = 0;
         processes.forEach((_, pIdx) => {
           if (allocation[pIdx] && allocation[pIdx][idx] !== undefined) {
@@ -209,29 +272,34 @@ const ResourceAllocationGraphPage = () => {
 
         flowNodes.push({
           id: r,
-          data: { label: `${r}\nAvailable: ${avail} / Total: ${total}` },
-          position: { x: 520, y: 60 + idx * rSpacing },
+          data: {
+            label: (
+              <div className="flex flex-col items-center justify-center space-y-1 p-1">
+                <span className="text-sm font-black text-amber-900">{r} ({rName})</span>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-100/80 text-amber-900 font-mono font-bold text-[11px] border border-amber-300">
+                  Avail: {avail} / Total: {total}
+                </span>
+              </div>
+            )
+          },
+          position: { x: 540, y: 50 + idx * rSpacing },
           style: {
-            background: isCycleResource ? '#fef3c7' : '#ffffff',
-            color: isCycleResource ? '#92400e' : '#78350f',
-            border: isCycleResource ? '4px solid #d97706' : '4px solid #f59e0b',
+            background: isCycleResource ? '#fffbeb' : '#ffffff',
+            color: '#78350f',
+            border: isCycleResource ? '4px solid #f59e0b' : '3.5px solid #d97706',
             borderRadius: '20px',
-            width: 170,
-            height: 90,
+            width: 180,
+            height: 85,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
-            fontWeight: '800',
-            fontSize: '13px',
-            lineHeight: '1.4',
-            whiteSpace: 'pre-wrap',
-            boxShadow: isCycleResource ? '0 0 20px rgba(217, 119, 6, 0.4)' : '0 10px 15px -3px rgba(245, 158, 11, 0.25)'
+            boxShadow: isCycleResource ? '0 0 20px rgba(245, 158, 11, 0.35)' : '0 10px 15px -3px rgba(217, 119, 6, 0.2)'
           }
         });
       });
 
-      // 3. Edges
+      // 3. Directed Edges (Curved Bezier Lines with Arrows)
       res.data.edges.forEach((e) => {
         const isAlloc = e.type === 'allocation';
         const isCycleEdge = res.data.hasCycle && res.data.cycles.some(cPath => cPath.includes(e.source) && cPath.includes(e.target));
@@ -244,10 +312,10 @@ const ResourceAllocationGraphPage = () => {
           type: 'smoothstep',
           animated: true,
           style: {
-            stroke: isCycleEdge ? '#dc2626' : (isAlloc ? '#10b981' : '#f59e0b'),
-            strokeWidth: isCycleEdge ? 4 : 3
+            stroke: isCycleEdge ? '#ef4444' : (isAlloc ? '#10b981' : '#f59e0b'),
+            strokeWidth: isCycleEdge ? 4 : 2.5
           },
-          labelStyle: { fill: isCycleEdge ? '#dc2626' : (isAlloc ? '#059669' : '#d97706'), fontSize: 13, fontWeight: '900' }
+          labelStyle: { fill: isCycleEdge ? '#dc2626' : (isAlloc ? '#059669' : '#d97706'), fontSize: 12, fontWeight: '900' }
         });
       });
 
@@ -256,7 +324,7 @@ const ResourceAllocationGraphPage = () => {
     } catch (err) {
       console.error('Failed to generate Resource Allocation Graph', err);
     }
-  }, [processes, resources, allocation, request, totalInstances]);
+  }, [processes, resources, resourceNames, allocation, request, totalInstances]);
 
   const autoRecoverFromRAG = async () => {
     try {
@@ -311,7 +379,7 @@ const ResourceAllocationGraphPage = () => {
             <span>Interactive Resource Allocation Graph (RAG)</span>
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Visual dependency diagram generated directly from entered process and resource matrices.
+            Visual dependency diagram generated dynamically from database processes ({processes.join(', ')}) and resources ({resources.join(', ')}).
           </p>
         </div>
 
@@ -357,16 +425,16 @@ const ResourceAllocationGraphPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-700">
             <div className="bg-white p-3.5 rounded-2xl border border-indigo-100">
               <span className="font-extrabold text-indigo-700 block mb-1">1. Processes (Circles)</span>
-              Represent running programs ($P_0, P_1, P_2$). Positioned cleanly on the left.
+              Represent active processes ({processes.slice(0, 4).join(', ')}...). Rendered on the left column.
             </div>
             <div className="bg-white p-3.5 rounded-2xl border border-amber-100">
               <span className="font-extrabold text-amber-700 block mb-1">2. Resources (Rectangles)</span>
-              Represent system hardware ($R_1, R_2, R_3$). Shows available & total units.
+              Represent system hardware ({resources.slice(0, 4).join(', ')}...). Shows Available / Total instances.
             </div>
             <div className="bg-white p-3.5 rounded-2xl border border-emerald-100">
               <span className="font-extrabold text-emerald-700 block mb-1">3. Directed Edges</span>
               <strong>Green Edge:</strong> Resource allocated to Process.<br />
-              <strong>Amber Edge:</strong> Process requesting Resource.
+              <strong>Amber/Red Edge:</strong> Process requesting Resource.
             </div>
           </div>
         </div>
@@ -376,14 +444,14 @@ const ResourceAllocationGraphPage = () => {
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <span className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider block mb-2">
-            1-Click Graph Presets:
+            1-Click Educational Presets:
           </span>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => loadPreset('safe')}
               className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-extrabold transition-all"
             >
-              Preset 1: Safe Graph (No Cycles)
+              Preset 1: Safe Graph (No Deadlock)
             </button>
             <button
               onClick={() => loadPreset('deadlock')}
@@ -467,12 +535,12 @@ const ResourceAllocationGraphPage = () => {
       {/* Total Resource Instances Input */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
         <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">
-          Total Resource Instances (Total Units in System)
+          Total Resource Instances (Hardware Capacity)
         </h3>
         <div className="flex flex-wrap gap-4">
           {resources.map((resName, idx) => (
             <div key={resName} className="flex items-center gap-3 bg-amber-50/60 border border-amber-200 rounded-2xl px-5 py-3 shadow-xs">
-              <span className="font-mono font-black text-sm text-amber-900">{resName}:</span>
+              <span className="font-mono font-black text-sm text-amber-900">{resName} ({resourceNames[idx] || resName}):</span>
               <input
                 type="number"
                 min="1"
@@ -511,7 +579,7 @@ const ResourceAllocationGraphPage = () => {
                         <input
                           type="number"
                           min="0"
-                          value={allocation[pIdx] ? allocation[pIdx][rIdx] : 0}
+                          value={allocation[pIdx] ? allocation[pIdx][rIdx] || 0 : 0}
                           onChange={(e) => handleCellChange('allocation', pIdx, rIdx, e.target.value)}
                           className="w-16 bg-indigo-50/50 border-2 border-indigo-200 focus:border-indigo-600 rounded-xl py-2 px-1 text-center text-base font-extrabold text-indigo-900 focus:outline-none focus:bg-white transition-all shadow-xs"
                         />
@@ -548,7 +616,7 @@ const ResourceAllocationGraphPage = () => {
                         <input
                           type="number"
                           min="0"
-                          value={request[pIdx] ? request[pIdx][rIdx] : 0}
+                          value={request[pIdx] ? request[pIdx][rIdx] || 0 : 0}
                           onChange={(e) => handleCellChange('request', pIdx, rIdx, e.target.value)}
                           className="w-16 bg-amber-50/50 border-2 border-amber-200 focus:border-amber-600 rounded-xl py-2 px-1 text-center text-base font-extrabold text-amber-900 focus:outline-none focus:bg-white transition-all shadow-xs"
                         />
@@ -583,7 +651,7 @@ const ResourceAllocationGraphPage = () => {
       </div>
 
       {/* React Flow Graph Container */}
-      <div className="bg-white rounded-3xl border-2 border-slate-200 h-[600px] relative overflow-hidden shadow-md">
+      <div className="bg-white rounded-3xl border-2 border-slate-200 h-[650px] relative overflow-hidden shadow-md">
         <ReactFlow
           nodes={nodes}
           edges={edges}

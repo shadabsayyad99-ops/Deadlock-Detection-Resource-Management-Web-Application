@@ -222,7 +222,7 @@ const ResourceAllocationGraphPage = () => {
       const pSpacing = Math.max(110, Math.min(160, 520 / pCount));
       const rSpacing = Math.max(110, Math.min(160, 520 / rCount));
 
-      // 1. Process Nodes (Left Column X: 140)
+      // 1. Process Nodes (Indigo Circles - Left Column X: 140)
       processes.forEach((p, idx) => {
         const isDeadlockedNode = res.data.hasCycle && res.data.cycles.some(cPath => cPath.includes(p));
 
@@ -230,10 +230,10 @@ const ResourceAllocationGraphPage = () => {
           id: p,
           data: {
             label: (
-              <div className="flex flex-col items-center justify-center">
+              <div className="flex flex-col items-center justify-center p-1">
                 <span className="text-base font-black tracking-wide">{p}</span>
                 {isDeadlockedNode && (
-                  <span className="mt-1 px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono text-[9px] font-black uppercase tracking-wider shadow-xs">
+                  <span className="mt-0.5 px-1.5 py-0.5 rounded-md bg-red-600 text-white font-mono text-[8px] font-black uppercase tracking-wider">
                     DEADLOCK
                   </span>
                 )}
@@ -244,23 +244,22 @@ const ResourceAllocationGraphPage = () => {
           style: {
             background: isDeadlockedNode ? '#fef2f2' : '#ffffff',
             color: isDeadlockedNode ? '#991b1b' : '#312e81',
-            border: isDeadlockedNode ? '4px solid #ef4444' : '3.5px solid #6366f1',
+            border: isDeadlockedNode ? '4px solid #ef4444' : '4px solid #6366f1',
             borderRadius: '50%',
-            width: 85,
-            height: 85,
+            width: 90,
+            height: 90,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
-            boxShadow: isDeadlockedNode ? '0 0 25px rgba(239, 68, 68, 0.45)' : '0 10px 15px -3px rgba(99, 102, 241, 0.2)'
+            boxShadow: isDeadlockedNode ? '0 0 25px rgba(239, 68, 68, 0.45)' : '0 10px 15px -3px rgba(99, 102, 241, 0.25)'
           }
         });
       });
 
-      // 2. Resource Nodes (Right Column X: 540)
+      // 2. Resource Nodes (Amber Circles - Right Column X: 580)
       resources.forEach((r, idx) => {
         const total = totalInstances[idx] !== undefined ? totalInstances[idx] : 1;
-        const rName = resourceNames[idx] || r;
         let allocSum = 0;
         processes.forEach((_, pIdx) => {
           if (allocation[pIdx] && allocation[pIdx][idx] !== undefined) {
@@ -274,27 +273,27 @@ const ResourceAllocationGraphPage = () => {
           id: r,
           data: {
             label: (
-              <div className="flex flex-col items-center justify-center space-y-1 p-1">
-                <span className="text-sm font-black text-amber-900">{r} ({rName})</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-100/80 text-amber-900 font-mono font-bold text-[11px] border border-amber-300">
-                  Avail: {avail} / Total: {total}
+              <div className="flex flex-col items-center justify-center p-1 leading-tight">
+                <span className="text-sm font-black text-amber-950">{r}</span>
+                <span className="mt-1 px-2 py-0.5 rounded-full bg-amber-100/90 text-amber-900 font-mono font-extrabold text-[10px] border border-amber-300">
+                  {avail} / {total}
                 </span>
               </div>
             )
           },
-          position: { x: 540, y: 50 + idx * rSpacing },
+          position: { x: 580, y: 50 + idx * rSpacing },
           style: {
             background: isCycleResource ? '#fffbeb' : '#ffffff',
             color: '#78350f',
-            border: isCycleResource ? '4px solid #f59e0b' : '3.5px solid #d97706',
-            borderRadius: '20px',
-            width: 180,
-            height: 85,
+            border: isCycleResource ? '4px solid #f59e0b' : '4px solid #d97706',
+            borderRadius: '50%',
+            width: 95,
+            height: 95,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             textAlign: 'center',
-            boxShadow: isCycleResource ? '0 0 20px rgba(245, 158, 11, 0.35)' : '0 10px 15px -3px rgba(217, 119, 6, 0.2)'
+            boxShadow: isCycleResource ? '0 0 20px rgba(245, 158, 11, 0.35)' : '0 10px 15px -3px rgba(217, 119, 6, 0.25)'
           }
         });
       });

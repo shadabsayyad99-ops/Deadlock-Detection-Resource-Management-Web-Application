@@ -397,27 +397,27 @@ const BankersAlgorithmPage = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-center">
+            <table className="w-full text-center table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 font-mono text-sm">
-                  <th className="text-left py-3 px-2 font-bold">Process</th>
+                  <th className="w-20 text-left py-3 px-2 font-bold">Process</th>
                   {resources.map(r => (
-                    <th key={r} className="py-3 px-2 text-indigo-700 font-black text-base">{r}</th>
+                    <th key={r} className="w-20 py-3 px-2 text-indigo-700 font-black text-base">{r}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
                 {processes.map((p, i) => (
                   <tr key={p} className="hover:bg-slate-50">
-                    <td className="text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
+                    <td className="w-20 text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
                     {allocation[i].map((val, j) => (
-                      <td key={j} className="py-2 px-1">
+                      <td key={j} className="w-20 py-2 px-1">
                         <input
                           type="number"
                           min="0"
                           value={val}
                           onChange={(e) => handleCellChange('allocation', i, j, e.target.value)}
-                          className="w-16 sm:w-20 bg-indigo-50/50 border-2 border-indigo-200 focus:border-indigo-600 rounded-xl py-2 px-2 text-center text-base font-extrabold text-indigo-900 focus:outline-none focus:bg-white transition-all shadow-xs"
+                          className="w-16 bg-indigo-50/50 border-2 border-indigo-200 focus:border-indigo-600 rounded-xl py-2 px-1 text-center text-base font-extrabold text-indigo-900 focus:outline-none focus:bg-white transition-all shadow-xs"
                         />
                       </td>
                     ))}
@@ -443,27 +443,27 @@ const BankersAlgorithmPage = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-center">
+            <table className="w-full text-center table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 font-mono text-sm">
-                  <th className="text-left py-3 px-2 font-bold">Process</th>
+                  <th className="w-20 text-left py-3 px-2 font-bold">Process</th>
                   {resources.map(r => (
-                    <th key={r} className="py-3 px-2 text-blue-700 font-black text-base">{r}</th>
+                    <th key={r} className="w-20 py-3 px-2 text-blue-700 font-black text-base">{r}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
                 {processes.map((p, i) => (
                   <tr key={p} className="hover:bg-slate-50">
-                    <td className="text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
+                    <td className="w-20 text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
                     {maximum[i].map((val, j) => (
-                      <td key={j} className="py-2 px-1">
+                      <td key={j} className="w-20 py-2 px-1">
                         <input
                           type="number"
                           min="0"
                           value={val}
                           onChange={(e) => handleCellChange('maximum', i, j, e.target.value)}
-                          className="w-16 sm:w-20 bg-blue-50/50 border-2 border-blue-200 focus:border-blue-600 rounded-xl py-2 px-2 text-center text-base font-extrabold text-blue-900 focus:outline-none focus:bg-white transition-all shadow-xs"
+                          className="w-16 bg-blue-50/50 border-2 border-blue-200 focus:border-blue-600 rounded-xl py-2 px-1 text-center text-base font-extrabold text-blue-900 focus:outline-none focus:bg-white transition-all shadow-xs"
                         />
                       </td>
                     ))}
@@ -489,26 +489,26 @@ const BankersAlgorithmPage = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-center">
+            <table className="w-full text-center table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 font-mono text-sm">
-                  <th className="text-left py-3 px-2 font-bold">Process</th>
+                  <th className="w-20 text-left py-3 px-2 font-bold">Process</th>
                   {resources.map(r => (
-                    <th key={r} className="py-3 px-2 text-amber-700 font-black text-base">{r}</th>
+                    <th key={r} className="w-20 py-3 px-2 text-amber-700 font-black text-base">{r}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">
                 {processes.map((p, i) => (
                   <tr key={p} className="hover:bg-slate-50">
-                    <td className="text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
+                    <td className="w-20 text-left font-black text-slate-800 py-3 px-2 text-sm">{p}</td>
                     {maximum[i].map((maxVal, j) => {
                       const allocVal = allocation[i] ? allocation[i][j] || 0 : 0;
                       const needVal = Math.max(0, maxVal - allocVal);
                       const isInvalid = maxVal < allocVal;
                       return (
-                        <td key={j} className="py-2 px-1">
-                          <div className={`py-2 px-2 text-center text-base font-black rounded-xl border-2 font-mono ${
+                        <td key={j} className="w-20 py-2 px-1">
+                          <div className={`w-16 py-2 text-center text-base font-black rounded-xl border-2 font-mono mx-auto ${
                             isInvalid
                               ? 'bg-red-100 text-red-700 border-red-300 animate-pulse'
                               : 'bg-amber-50 text-amber-900 border-amber-200'

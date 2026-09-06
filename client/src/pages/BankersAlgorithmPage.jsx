@@ -585,6 +585,49 @@ const BankersAlgorithmPage = () => {
             </div>
           </div>
 
+          {/* Step-by-Step Banker's Algorithm Calculations Log */}
+          {safetyResult.steps && safetyResult.steps.length > 0 && (
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-emerald-600" />
+                  <span>Step-by-Step Banker's Safety Calculations Log</span>
+                </h3>
+                <span className="text-xs font-mono font-bold text-slate-400 uppercase">
+                  {safetyResult.steps.length} Steps Executed
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {safetyResult.steps.map((st, idx) => (
+                  <div key={idx} className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs font-mono">
+                    <div className="flex items-center justify-between">
+                      <span className="px-3 py-1 rounded-lg bg-indigo-600 text-white font-bold">
+                        Step {st.step}: {st.process ? `Evaluating ${st.process}` : st.title}
+                      </span>
+                      {st.newWork && (
+                        <span className="text-emerald-700 font-black text-xs">
+                          Work = [{st.newWork.join(', ')}]
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-800 text-sm font-sans font-medium leading-relaxed pt-1">
+                      {st.description}
+                    </p>
+                    {st.currentSequence && st.currentSequence.length > 0 && (
+                      <div className="pt-2 flex items-center gap-2 font-sans font-bold text-slate-600">
+                        <span>Current Sequence Progress:</span>
+                        <span className="text-emerald-700 font-mono font-black">
+                          {st.currentSequence.join(' → ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Test Resource Request Algorithm */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
             <div>

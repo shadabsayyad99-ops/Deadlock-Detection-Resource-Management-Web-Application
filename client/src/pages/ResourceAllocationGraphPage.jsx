@@ -253,16 +253,10 @@ const ResourceAllocationGraphPage = () => {
 
       setNodes(flowNodes);
       setEdges(flowEdges);
-
-      if (res.data.hasCycle) {
-        showNotification('Deadlock Cycle Detected in Resource Allocation Graph!', 'warning');
-      } else {
-        showNotification('No cycles detected in Resource Allocation Graph.', 'success');
-      }
     } catch (err) {
-      showNotification('Failed to generate Resource Allocation Graph', 'error');
+      console.error('Failed to generate Resource Allocation Graph', err);
     }
-  }, [processes, resources, allocation, request, totalInstances, showNotification]);
+  }, [processes, resources, allocation, request, totalInstances]);
 
   const autoRecoverFromRAG = async () => {
     try {

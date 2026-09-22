@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { deadlockAPI } from '../services/api';
+import React, { useState, useCallback } from 'react';
+import { deadlockAPI, processAPI, resourceAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   Calculator,
@@ -10,7 +10,8 @@ import {
   Sparkles,
   Plus,
   Trash2,
-  HelpCircle
+  HelpCircle,
+  Database
 } from 'lucide-react';
 
 const BankersAlgorithmPage = () => {
@@ -99,6 +100,37 @@ const BankersAlgorithmPage = () => {
     setSafetyResult(null);
     setRequestResult(null);
   };
+
+  // ── Load from Database ──────────────────────────────────────────────────
+  const [loadingDB, setLoadingDB] = useState(false);
+  const loadFromDB = useCallback(async () => {
+    setLoadingDB(true);
+    try {
+      const [pRes, rRes] = await Promise.all([processAPI.getAll(), resourceAPI.getAll()]);
+      const dbProcesses = pRes.data.map(p => p.processId);
+      const dbResources = rRes.data.map(r => r.resourceId);
+      const dbAvailable = rRes.data.map(r => r.availableInstances ?? 0);
+
+      if (dbProcesses.length === 0 || dbResources.length === 0) {
+        showNotification('No processes/resources in DB. Add them first via Process & Resource Management.', 'warning');
+        return;
+      }
+
+      setProcesses(dbProcesses);
+      setResources(dbResources);
+      setAvailable(dbAvailable);
+      setAllocation(Array.from({ length: dbProcesses.length }, () => new Array(dbResources.length).fill(0)));
+      setMaximum(Array.from({ length: dbProcesses.length }, () => new Array(dbResources.length).fill(1)));
+      setRequestVec(new Array(dbResources.length).fill(0));
+      setSafetyResult(null);
+      setRequestResult(null);
+      showNotification(`Loaded ${dbProcesses.length} processes and ${dbResources.length} resources from database. Available vector set from resource data.`, 'success');
+    } catch {
+      showNotification('Could not connect to database.', 'error');
+    } finally {
+      setLoadingDB(false);
+    }
+  }, []);
 
   const handleCellChange = (matrixType, pIdx, rIdx, val) => {
     const numVal = Math.max(0, parseInt(val) || 0);
@@ -215,7 +247,17 @@ const BankersAlgorithmPage = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Load from DB */}
+          <button
+            onClick={loadFromDB}
+            disabled={loadingDB}
+            className="px-4 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 flex items-center gap-2 transition-all"
+          >
+            {loadingDB ? <div className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+            <span>Load from DB</span>
+          </button>
+
           <button
             onClick={() => setShowGuide(!showGuide)}
             className="px-4 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs border border-amber-200 flex items-center gap-2 transition-all"
@@ -240,6 +282,7 @@ const BankersAlgorithmPage = () => {
           </button>
         </div>
       </div>
+
 
       {/* Guided Tour Banner for New Users */}
       {showGuide && (

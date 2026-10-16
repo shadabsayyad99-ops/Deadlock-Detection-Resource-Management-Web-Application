@@ -11,24 +11,38 @@
  * 4. If Finish[i] == true for all i, system is SAFE, else UNSAFE.
  */
 
-function calculateNeed(maximum, allocation) {
-  const n = maximum.length;
-  const m = maximum[0].length;
-  const need = Array.from({ length: n }, () => new Array(m).fill(0));
+function calculateNeed(maximum, allocation, n, m) {
+  const rows = n || (maximum ? maximum.length : 0);
+  const cols = m || (maximum && maximum[0] ? maximum[0].length : 0);
+  const need = Array.from({ length: rows }, () => new Array(cols).fill(0));
 
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < m; j++) {
-      need[i][j] = Math.max(0, maximum[i][j] - allocation[i][j]);
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const maxVal = Number(maximum?.[i]?.[j]) || 0;
+      const allocVal = Number(allocation?.[i]?.[j]) || 0;
+      need[i][j] = Math.max(0, maxVal - allocVal);
     }
   }
   return need;
 }
 
-function checkSafety(processes, resources, available, allocation, maximum, needMatrix = null) {
+function checkSafety(processes, resources, rawAvailable, rawAllocation, rawMaximum, rawNeed = null) {
   const n = processes.length;
   const m = resources.length;
 
-  const need = needMatrix || calculateNeed(maximum, allocation);
+  // Ensure all values are parsed as clean numbers
+  const available = Array.from({ length: m }, (_, j) => Number(rawAvailable?.[j]) || 0);
+  const allocation = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: m }, (_, j) => Number(rawAllocation?.[i]?.[j]) || 0)
+  );
+  const maximum = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: m }, (_, j) => Number(rawMaximum?.[i]?.[j]) || 0)
+  );
+
+  const need = rawNeed
+    ? rawNeed.map(row => row.map(v => Number(v) || 0))
+    : calculateNeed(maximum, allocation, n, m);
+
   const work = [...available];
   const finish = new Array(n).fill(false);
   const safeSequence = [];
@@ -41,7 +55,7 @@ function checkSafety(processes, resources, available, allocation, maximum, needM
     work: [...work],
     finish: [...finish],
     safeSequence: [],
-    description: `Need Matrix calculated (Need = Max - Allocation). Initial Work = [${work.join(', ')}].`
+    description: `Need Matrix computed. Initial Work Vector = [${work.join(', ')}].`
   });
 
   let count = 0;
@@ -79,9 +93,9 @@ function checkSafety(processes, resources, available, allocation, maximum, needM
             previousWork: oldWork,
             newWork: [...work],
             currentSequence: [...safeSequence],
-            description: `Process ${processes[i]} Need [${need[i].join(', ')}] <= Work [${oldWork.join(', ')}]. Process can safely execute and release allocation [${allocation[i].join(', ')}]. New Work = [${work.join(', ')}].`
+            description: `Process ${processes[i]}: Need [${need[i].join(', ')}] <= Work [${oldWork.join(', ')}]. Process executes and releases allocation [${allocation[i].join(', ')}]. New Work = [${work.join(', ')}].`
           });
-          break; // restart search from beginning to maintain standard Banker's safety order
+          break; // restart scan from beginning to maintain standard Banker's evaluation order
         }
       }
     }
@@ -98,9 +112,10 @@ function checkSafety(processes, resources, available, allocation, maximum, needM
     safeSequence: isSafe ? safeSequence : [],
     need,
     steps,
+    workHistory: steps,
     explanation: isSafe
       ? `System is in a SAFE STATE. A safe sequence exists: ${safeSequence.join(' → ')}.`
-      : `System is in an UNSAFE STATE! No safe execution sequence could be found for all processes. Granting further requests may lead to a deadlock.`
+      : `System is in an UNSAFE STATE! No safe execution sequence exists for all processes. Granting further requests may lead to deadlock.`
   };
 }
 
@@ -108,16 +123,27 @@ function checkSafety(processes, resources, available, allocation, maximum, needM
  * Resource Request Algorithm for Banker's
  * Checks if a specific process's request can be safely granted.
  */
-function requestResource(processes, resources, available, allocation, maximum, processIndex, requestVector) {
+function requestResource(processes, resources, rawAvailable, rawAllocation, rawMaximum, processIndex, rawRequestVector) {
+  const n = processes.length;
   const m = resources.length;
-  const need = calculateNeed(maximum, allocation);
+
+  const available = Array.from({ length: m }, (_, j) => Number(rawAvailable?.[j]) || 0);
+  const allocation = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: m }, (_, j) => Number(rawAllocation?.[i]?.[j]) || 0)
+  );
+  const maximum = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: m }, (_, j) => Number(rawMaximum?.[i]?.[j]) || 0)
+  );
+  const requestVector = Array.from({ length: m }, (_, j) => Number(rawRequestVector?.[j]) || 0);
+
+  const need = calculateNeed(maximum, allocation, n, m);
 
   // Step 1: Check if Request <= Need
   for (let j = 0; j < m; j++) {
     if (requestVector[j] > need[processIndex][j]) {
       return {
         granted: false,
-        reason: `Error: Process ${processes[processIndex]} has exceeded its maximum claim (Request [${requestVector.join(', ')}] > Need [${need[processIndex].join(', ')}]).`
+        reason: `Error: Process ${processes[processIndex]} exceeded its maximum claim (Request [${requestVector.join(', ')}] > Need [${need[processIndex].join(', ')}]).`
       };
     }
   }
@@ -149,7 +175,7 @@ function requestResource(processes, resources, available, allocation, maximum, p
   if (safetyResult.isSafe) {
     return {
       granted: true,
-      reason: `Resource request granted safely to Process ${processes[processIndex]}. System remains in a SAFE state.`,
+      reason: `Resource request granted safely to Process ${processes[processIndex]}. System remains in a SAFE state with sequence: ${safetyResult.safeSequence.join(' → ')}.`,
       newAvailable: tempAvailable,
       newAllocation: tempAllocation,
       newNeed: tempNeed,

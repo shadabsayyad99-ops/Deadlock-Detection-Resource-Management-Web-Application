@@ -1,204 +1,206 @@
-import React, { useState } from 'react';
-import { Share2, Plus, Sparkles } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import React from 'react';
+import { useSystemState } from '../context/SystemStateContext';
+import { Share2, Database, Calculator, RefreshCw, Sparkles, CheckCircle } from 'lucide-react';
+import EditableMatrix from '../components/EditableMatrix';
 
 const ResourceAllocation = () => {
-  const { showNotification } = useAuth();
-
-  const [processes, setProcesses] = useState(['P0', 'P1', 'P2']);
-  const [resources, setResources] = useState(['R1', 'R2', 'R3']);
-  const [available, setAvailable] = useState([1, 1, 0]);
-
-  const [allocation, setAllocation] = useState([
-    [1, 0, 1],
-    [0, 1, 0],
-    [1, 0, 0]
-  ]);
-
-  const [request, setRequest] = useState([
-    [0, 1, 0],
-    [1, 0, 1],
-    [0, 0, 1]
-  ]);
-
-  const handleCellChange = (matrixType, pIdx, rIdx, val) => {
-    const numVal = Math.max(0, parseInt(val) || 0);
-    if (matrixType === 'allocation') {
-      const newAlloc = allocation.map((row, i) =>
-        row.map((cell, j) => (i === pIdx && j === rIdx ? numVal : cell))
-      );
-      setAllocation(newAlloc);
-    } else {
-      const newReq = request.map((row, i) =>
-        row.map((cell, j) => (i === pIdx && j === rIdx ? numVal : cell))
-      );
-      setRequest(newReq);
-    }
-  };
-
-  const handleAvailableChange = (rIdx, val) => {
-    const numVal = Math.max(0, parseInt(val) || 0);
-    const newAvail = [...available];
-    newAvail[rIdx] = numVal;
-    setAvailable(newAvail);
-  };
-
-  const addProcessRow = () => {
-    const pName = `P${processes.length}`;
-    setProcesses([...processes, pName]);
-    setAllocation([...allocation, new Array(resources.length).fill(0)]);
-    setRequest([...request, new Array(resources.length).fill(0)]);
-    showNotification(`Added process ${pName}`, 'info');
-  };
-
-  const addResourceCol = () => {
-    const rName = `R${resources.length + 1}`;
-    setResources([...resources, rName]);
-    setAvailable([...available, 1]);
-    setAllocation(allocation.map(row => [...row, 0]));
-    setRequest(request.map(row => [...row, 0]));
-    showNotification(`Added resource ${rName}`, 'info');
-  };
+  const {
+    processes,
+    resources,
+    totalInstances,
+    available,
+    allocation,
+    request,
+    maximum,
+    isLoadingDB,
+    lastSyncTime,
+    syncWithDB,
+    loadPreset,
+    updateAllocationCell,
+    updateRequestCell,
+    updateMaximumCell,
+    updateAvailableVal,
+    updateTotalInstanceVal,
+    autoComputeAvailable,
+  } = useSystemState();
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-3">
             <div className="p-2.5 bg-purple-100 text-purple-700 rounded-2xl">
               <Share2 className="w-6 h-6" />
             </div>
-            <span>Resource Allocation & Matrix Editor</span>
+            <span>System Resource Allocation & Matrices</span>
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Easily edit allocation vectors, waiting requests, and available resources in real time.
+            Centralized matrix state. All edits made here immediately reflect in <strong>Deadlock Detection</strong>, <strong>Banker's Algorithm</strong>, <strong>RAG</strong>, <strong>Simulation</strong>, and <strong>Recovery</strong>.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Sync from Database */}
           <button
-            onClick={addProcessRow}
-            className="px-4 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs border border-indigo-200 flex items-center gap-2 transition-all"
+            onClick={() => syncWithDB(true)}
+            disabled={isLoadingDB}
+            className="px-4 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs border border-indigo-200 flex items-center gap-2 transition-all shadow-xs"
           >
-            <Plus className="w-4 h-4 text-indigo-600" />
-            <span>+ Add Process</span>
+            {isLoadingDB ? (
+              <div className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin" />
+            ) : (
+              <Database className="w-3.5 h-3.5" />
+            )}
+            <span>Sync with Live DB</span>
           </button>
+
+          {/* Auto Compute Available */}
           <button
-            onClick={addResourceCol}
-            className="px-4 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-xs border border-purple-200 flex items-center gap-2 transition-all"
+            onClick={autoComputeAvailable}
+            className="px-4 py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs border border-emerald-200 flex items-center gap-2 transition-all shadow-xs"
+            title="Sets Available[j] = Total[j] - Sum(Allocation[i][j])"
           >
-            <Plus className="w-4 h-4 text-purple-600" />
-            <span>+ Add Resource</span>
+            <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Auto-Compute Available</span>
           </button>
+
+          {/* Presets Dropdown */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5 shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            <select
+              onChange={(e) => e.target.value && loadPreset(e.target.value)}
+              defaultValue=""
+              className="bg-transparent text-xs text-slate-700 font-extrabold focus:outline-none cursor-pointer"
+            >
+              <option value="" disabled>Load Preset Scenario...</option>
+              <option value="deadlock">Classic Deadlock (4 Processes)</option>
+              <option value="safe">Banker's Safe State (5 Processes)</option>
+              <option value="simple">Simple 3-Process System</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Available Vector Banner */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-        <h3 className="text-sm font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-600" />
-          <span>Available Resource Vector [Available[j]]</span>
-        </h3>
-        <div className="flex flex-wrap gap-4">
-          {resources.map((resName, idx) => (
-            <div key={resName} className="flex items-center gap-3 bg-emerald-50/60 border border-emerald-200 rounded-2xl px-5 py-3 shadow-xs">
-              <span className="font-mono font-black text-sm text-emerald-900">{resName}:</span>
-              <input
-                type="number"
-                min="0"
-                value={available[idx]}
-                onChange={(e) => handleAvailableChange(idx, e.target.value)}
-                className="w-20 bg-white border-2 border-emerald-300 rounded-xl py-2 px-3 text-center text-base font-mono font-extrabold text-slate-900 focus:outline-none focus:border-emerald-600 shadow-xs"
-              />
-            </div>
-          ))}
+      {/* Sync Status Banner */}
+      <div className="flex items-center justify-between text-xs px-5 py-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-slate-600">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-emerald-600" />
+          <span>
+            Active System: <strong>{processes.length} Processes</strong> ({processes.join(', ')}) &bull; <strong>{resources.length} Resources</strong> ({resources.join(', ')})
+          </span>
+        </div>
+        {lastSyncTime && (
+          <span className="text-slate-400 font-mono">Synced from DB at {lastSyncTime}</span>
+        )}
+      </div>
+
+      {/* Vectors Section: Total Instances and Available Instances */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Total Instances */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-amber-800 uppercase tracking-wider">
+              Total Instances [TotalInstances[j]]
+            </h3>
+            <span className="text-[10px] text-slate-400 font-bold">Total hardware copies</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {resources.map((r, idx) => (
+              <div key={r} className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-500">{r}</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={totalInstances[idx] ?? 1}
+                  onChange={(e) => updateTotalInstanceVal(idx, e.target.value)}
+                  className="w-16 text-center bg-amber-50 border border-amber-200 rounded-xl px-2 py-2 text-amber-900 font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Available Instances */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-emerald-800 uppercase tracking-wider">
+              Available Vector [Available[j]]
+            </h3>
+            <span className="text-[10px] text-slate-400 font-bold">Currently free to allocate</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {resources.map((r, idx) => (
+              <div key={r} className="flex flex-col items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-500">{r}</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={available[idx] ?? 0}
+                  onChange={(e) => updateAvailableVal(idx, e.target.value)}
+                  className="w-16 text-center bg-emerald-50 border border-emerald-200 rounded-xl px-2 py-2 text-emerald-900 font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Enlarged Matrices Grid */}
+      {/* Allocation & Request Matrices */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Allocation Matrix */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-base font-black text-indigo-700 flex items-center gap-2">
-              <span>Allocation Matrix</span>
-            </h3>
-            <span className="text-xs font-mono text-slate-400 font-bold">[Allocation[i][j]]</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">
+              Allocation Matrix — What each process currently holds
+            </p>
+            <span className="text-[10px] text-slate-400 font-mono">[Allocation[i][j]]</span>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-center">
-              <thead className="bg-slate-50 border-b border-slate-200 font-mono text-slate-600 text-sm">
-                <tr>
-                  <th className="p-3 text-left font-bold">Process</th>
-                  {resources.map(r => (
-                    <th key={r} className="p-3 text-indigo-700 font-black text-base">{r}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {processes.map((proc, pIdx) => (
-                  <tr key={proc} className="hover:bg-slate-50/80">
-                    <td className="p-3 text-left font-black text-slate-800 text-sm">{proc}</td>
-                    {resources.map((res, rIdx) => (
-                      <td key={res} className="p-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={allocation[pIdx][rIdx]}
-                          onChange={(e) => handleCellChange('allocation', pIdx, rIdx, e.target.value)}
-                          className="w-20 bg-indigo-50/50 border-2 border-indigo-200 focus:border-indigo-600 rounded-xl py-2 px-3 text-center text-base font-extrabold text-indigo-900 focus:outline-none focus:bg-white transition-all shadow-xs"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <EditableMatrix
+            label="Allocation Matrix"
+            color="indigo"
+            processes={processes}
+            resources={resources}
+            matrix={allocation}
+            onChange={updateAllocationCell}
+          />
         </div>
 
         {/* Request Matrix */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="text-base font-black text-amber-700 flex items-center gap-2">
-              <span>Request Matrix</span>
-            </h3>
-            <span className="text-xs font-mono text-slate-400 font-bold">[Request[i][j]]</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs font-bold text-rose-700 uppercase tracking-wider">
+              Request Matrix — What each process is waiting for
+            </p>
+            <span className="text-[10px] text-slate-400 font-mono">[Request[i][j]]</span>
           </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-center">
-              <thead className="bg-slate-50 border-b border-slate-200 font-mono text-slate-600 text-sm">
-                <tr>
-                  <th className="p-3 text-left font-bold">Process</th>
-                  {resources.map(r => (
-                    <th key={r} className="p-3 text-amber-700 font-black text-base">{r}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono">
-                {processes.map((proc, pIdx) => (
-                  <tr key={proc} className="hover:bg-slate-50/80">
-                    <td className="p-3 text-left font-black text-slate-800 text-sm">{proc}</td>
-                    {resources.map((res, rIdx) => (
-                      <td key={res} className="p-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={request[pIdx][rIdx]}
-                          onChange={(e) => handleCellChange('request', pIdx, rIdx, e.target.value)}
-                          className="w-20 bg-amber-50/50 border-2 border-amber-200 focus:border-amber-600 rounded-xl py-2 px-3 text-center text-base font-extrabold text-amber-900 focus:outline-none focus:bg-white transition-all shadow-xs"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <EditableMatrix
+            label="Request Matrix"
+            color="rose"
+            processes={processes}
+            resources={resources}
+            matrix={request}
+            onChange={updateRequestCell}
+          />
         </div>
+      </div>
+
+      {/* Maximum Matrix (for Banker's Algorithm) */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+            Maximum Matrix — Maximum claims declared in advance (used by Banker's Algorithm)
+          </p>
+          <span className="text-[10px] text-slate-400 font-mono">[Maximum[i][j]]</span>
+        </div>
+        <EditableMatrix
+          label="Maximum Matrix (Banker's Claims)"
+          color="blue"
+          processes={processes}
+          resources={resources}
+          matrix={maximum}
+          onChange={updateMaximumCell}
+        />
       </div>
     </div>
   );

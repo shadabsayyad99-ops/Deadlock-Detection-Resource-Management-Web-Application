@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { SystemStateProvider } from './context/SystemStateContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
@@ -26,50 +27,52 @@ import AdminPage from './pages/AdminPage';
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          {/* Public Auth Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+      <SystemStateProvider>
+        <Router>
+          <Routes>
+            {/* Public Auth Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Protected Application Routes */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="processes" element={<ProcessManagement />} />
-            <Route path="resources" element={<ResourceManagement />} />
-            <Route path="allocation" element={<ResourceAllocation />} />
-            <Route path="deadlock-detection" element={<DeadlockDetectionPage />} />
-            <Route path="bankers-algorithm" element={<BankersAlgorithmPage />} />
-            <Route path="resource-allocation-graph" element={<ResourceAllocationGraphPage />} />
-            <Route path="simulation" element={<SimulationPage />} />
-            <Route path="recovery" element={<RecoveryPage />} />
-            <Route path="prevention" element={<PreventionPage />} />
-            <Route path="comparison" element={<ComparisonPage />} />
-            <Route path="history" element={<HistoryPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="profile" element={<ProfilePage />} />
+            {/* Protected Application Routes */}
             <Route
-              path="admin"
+              path="/"
               element={
-                <ProtectedRoute adminOnly={true}>
-                  <AdminPage />
+                <ProtectedRoute>
+                  <DashboardLayout />
                 </ProtectedRoute>
               }
-            />
-          </Route>
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Dashboard />} />
+              <Route path="processes" element={<ProcessManagement />} />
+              <Route path="resources" element={<ResourceManagement />} />
+              <Route path="allocation" element={<ResourceAllocation />} />
+              <Route path="deadlock-detection" element={<DeadlockDetectionPage />} />
+              <Route path="bankers-algorithm" element={<BankersAlgorithmPage />} />
+              <Route path="resource-allocation-graph" element={<ResourceAllocationGraphPage />} />
+              <Route path="simulation" element={<SimulationPage />} />
+              <Route path="recovery" element={<RecoveryPage />} />
+              <Route path="prevention" element={<PreventionPage />} />
+              <Route path="comparison" element={<ComparisonPage />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route
+                path="admin"
+                element={
+                  <ProtectedRoute adminOnly={true}>
+                    <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
 
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </Router>
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Router>
+      </SystemStateProvider>
     </AuthProvider>
   );
 }

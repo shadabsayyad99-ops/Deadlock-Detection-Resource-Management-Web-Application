@@ -3,7 +3,12 @@ const Process = require('../models/Process');
 const getProcesses = async (req, res) => {
   try {
     const filter = req.user.role === 'Admin' ? {} : { userId: req.user.userId };
-    const processes = await Process.find(filter).sort({ createdAt: -1 });
+    const processes = await Process.find(filter);
+    processes.sort((a, b) => {
+      const numA = parseInt(String(a.processId).replace(/\D/g, '')) || 0;
+      const numB = parseInt(String(b.processId).replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
     res.json(processes);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching processes.', error: error.message });

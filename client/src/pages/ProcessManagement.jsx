@@ -31,7 +31,13 @@ const ProcessManagement = () => {
       setFormData({ processId: proc.processId, name: proc.name, priority: proc.priority, status: proc.status });
     } else {
       setEditingId(null);
-      setFormData({ processId: `P${processes.length + 1}`, name: '', priority: 1, status: 'READY' });
+      // Generate lowest unused index starting from P0
+      const existingIds = new Set(processes.map(p => String(p.processId || '').toUpperCase()));
+      let nextNum = 0;
+      while (existingIds.has(`P${nextNum}`)) {
+        nextNum++;
+      }
+      setFormData({ processId: `P${nextNum}`, name: `Process ${nextNum}`, priority: 1, status: 'READY' });
     }
     setShowModal(true);
   };
@@ -81,7 +87,13 @@ const ProcessManagement = () => {
     );
   };
 
-  const filteredProcesses = processes.filter(p => {
+  const sortedProcesses = [...processes].sort((a, b) => {
+    const numA = parseInt(String(a.processId).replace(/\D/g, '')) || 0;
+    const numB = parseInt(String(b.processId).replace(/\D/g, '')) || 0;
+    return numA - numB;
+  });
+
+  const filteredProcesses = sortedProcesses.filter(p => {
     const matchesSearch = p.processId.toLowerCase().includes(search.toLowerCase()) || p.name.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = statusFilter === 'ALL' || p.status === statusFilter;
     return matchesSearch && matchesFilter;

@@ -150,11 +150,21 @@ export const SystemStateProvider = ({ children }) => {
   const syncWithDB = useCallback(async (notify = true) => {
     setIsLoadingDB(true);
     try {
-      const [pRes, rRes] = await Promise.all([processAPI.getAll(), resourceAPI.getAll()]);
-      const dbProcs = (pRes.data || []).map((p) => p.processId);
-      const dbRes = (rRes.data || []).map((r) => r.resourceId);
-      const dbTotals = (rRes.data || []).map((r) => r.totalInstances ?? 1);
-      const dbAvail = (rRes.data || []).map((r) => r.availableInstances ?? r.totalInstances ?? 0);
+      const rawProcs = (pRes.data || []).sort((a, b) => {
+        const numA = parseInt(String(a.processId).replace(/\D/g, '')) || 0;
+        const numB = parseInt(String(b.processId).replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      const dbProcs = rawProcs.map((p) => p.processId);
+
+      const rawRes = (rRes.data || []).sort((a, b) => {
+        const numA = parseInt(String(a.resourceId).replace(/\D/g, '')) || 0;
+        const numB = parseInt(String(b.resourceId).replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
+      const dbRes = rawRes.map((r) => r.resourceId);
+      const dbTotals = rawRes.map((r) => r.totalInstances ?? 1);
+      const dbAvail = rawRes.map((r) => r.availableInstances ?? r.totalInstances ?? 0);
 
       if (dbProcs.length === 0 || dbRes.length === 0) {
         if (notify && showNotification) {

@@ -3,7 +3,12 @@ const Resource = require('../models/Resource');
 const getResources = async (req, res) => {
   try {
     const filter = req.user.role === 'Admin' ? {} : { userId: req.user.userId };
-    const resources = await Resource.find(filter).sort({ createdAt: -1 });
+    const resources = await Resource.find(filter);
+    resources.sort((a, b) => {
+      const numA = parseInt(String(a.resourceId).replace(/\D/g, '')) || 0;
+      const numB = parseInt(String(b.resourceId).replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
     res.json(resources);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching resources.', error: error.message });

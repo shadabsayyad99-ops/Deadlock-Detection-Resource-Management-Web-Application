@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { deadlockAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSystemState } from '../context/SystemStateContext';
@@ -9,89 +9,9 @@ import {
   Background,
   applyNodeChanges,
   applyEdgeChanges,
-  EdgeLabelRenderer,
-  BaseEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import EditableMatrix from '../components/EditableMatrix';
-
-// ── Custom Sine-Wave Edge ──────────────────────────────────────────────────
-const SineWaveEdge = ({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  markerEnd,
-  style = {},
-  label,
-  labelStyle = {},
-}) => {
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const length = Math.sqrt(dx * dx + dy * dy);
-
-  if (length < 1) return null;
-
-  const angle = Math.atan2(dy, dx);
-
-  // Sine wave parameters
-  const amplitude = 14;          // peak height of each wave in px
-  const numWaves  = Math.max(2, Math.round(length / 70)); // number of full cycles
-  const steps     = 120;         // path resolution
-
-  const pts = [];
-  for (let i = 0; i <= steps; i++) {
-    const t   = i / steps;
-    const bx  = sourceX + t * dx;
-    const by  = sourceY + t * dy;
-    // sine oscillation perpendicular to the edge direction
-    const off = amplitude * Math.sin(t * numWaves * 2 * Math.PI);
-    pts.push([bx - Math.sin(angle) * off, by + Math.cos(angle) * off]);
-  }
-
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-
-  // Label sits at the edge midpoint, offset slightly above the wave
-  const midX = sourceX + dx / 2 - Math.sin(angle) * (amplitude + 10);
-  const midY = sourceY + dy / 2 + Math.cos(angle) * (amplitude + 10);
-
-  return (
-    <>
-      <path
-        id={id}
-        className="react-flow__edge-path"
-        d={d}
-        fill="none"
-        style={style}
-        markerEnd={markerEnd}
-      />
-      {label && (
-        <EdgeLabelRenderer>
-          <div
-            style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${midX}px,${midY}px)`,
-              pointerEvents: 'none',
-              ...labelStyle,
-              background: 'rgba(255,255,255,0.9)',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontSize: 10,
-              fontWeight: 'bold',
-              whiteSpace: 'nowrap',
-            }}
-            className="nodrag nopan"
-          >
-            {label}
-          </div>
-        </EdgeLabelRenderer>
-      )}
-    </>
-  );
-};
-
-const edgeTypes = { sinewave: SineWaveEdge };
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const ResourceAllocationGraphPage = () => {
@@ -202,7 +122,7 @@ const ResourceAllocationGraphPage = () => {
         });
       });
 
-      // Sine-wave edges from backend cycle result
+      // Smooth curved dashed arrows (bezier S-curve with dashed stroke)
       res.data.edges.forEach((e) => {
         const isAlloc = e.type === 'allocation';
         flowEdges.push({
@@ -210,16 +130,22 @@ const ResourceAllocationGraphPage = () => {
           source: e.source,
           target: e.target,
           label: e.label,
-          type: 'sinewave',          // ← our custom sine-wave edge
+          type: 'smoothstep',
           animated: false,
           markerEnd: { type: 'arrowclosed', color: isAlloc ? '#10b981' : '#ef4444' },
           style: {
             stroke: isAlloc ? '#10b981' : '#ef4444',
-            strokeWidth: 2,
+            strokeWidth: 2.5,
+            strokeDasharray: '8 5',
           },
           labelStyle: {
-            color: isAlloc ? '#059669' : '#dc2626',
+            fill: isAlloc ? '#047857' : '#b91c1c',
+            fontSize: 10,
+            fontWeight: 'bold',
           },
+          labelBgStyle: { fill: '#ffffff', opacity: 0.9 },
+          labelBgPadding: [4, 2],
+          labelBgBorderRadius: 4,
         });
       });
 
@@ -356,14 +282,16 @@ const ResourceAllocationGraphPage = () => {
           <span className="text-slate-700 font-semibold">Resource Node (Rectangle)</span>
         </div>
         <div className="flex items-center gap-2">
-          <svg width="32" height="14" viewBox="0 0 32 14">
-            <path d="M0,7 Q4,0 8,7 Q12,14 16,7 Q20,0 24,7 Q28,14 32,7" fill="none" stroke="#10b981" strokeWidth="2" />
+          <svg width="36" height="14" viewBox="0 0 36 14">
+            <path d="M0,7 C10,7 14,2 18,2 C22,2 26,12 36,12" fill="none" stroke="#10b981" strokeWidth="2.5" strokeDasharray="5 3" />
+            <polygon points="32,9 36,12 32,15" fill="#10b981" />
           </svg>
           <span className="text-slate-700 font-semibold">Allocation Edge (R → P)</span>
         </div>
         <div className="flex items-center gap-2">
-          <svg width="32" height="14" viewBox="0 0 32 14">
-            <path d="M0,7 Q4,0 8,7 Q12,14 16,7 Q20,0 24,7 Q28,14 32,7" fill="none" stroke="#ef4444" strokeWidth="2" />
+          <svg width="36" height="14" viewBox="0 0 36 14">
+            <path d="M0,7 C10,7 14,2 18,2 C22,2 26,12 36,12" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeDasharray="5 3" />
+            <polygon points="32,9 36,12 32,15" fill="#ef4444" />
           </svg>
           <span className="text-slate-700 font-semibold">Request Edge (P → R)</span>
         </div>
@@ -380,7 +308,6 @@ const ResourceAllocationGraphPage = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             fitView

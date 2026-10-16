@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { deadlockAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSystemState } from '../context/SystemStateContext';
@@ -8,11 +8,92 @@ import {
   Controls,
   Background,
   applyNodeChanges,
-  applyEdgeChanges
+  applyEdgeChanges,
+  EdgeLabelRenderer,
+  BaseEdge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import EditableMatrix from '../components/EditableMatrix';
 
+// ── Custom Sine-Wave Edge ──────────────────────────────────────────────────
+const SineWaveEdge = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  markerEnd,
+  style = {},
+  label,
+  labelStyle = {},
+}) => {
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const length = Math.sqrt(dx * dx + dy * dy);
+
+  if (length < 1) return null;
+
+  const angle = Math.atan2(dy, dx);
+
+  // Sine wave parameters
+  const amplitude = 14;          // peak height of each wave in px
+  const numWaves  = Math.max(2, Math.round(length / 70)); // number of full cycles
+  const steps     = 120;         // path resolution
+
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t   = i / steps;
+    const bx  = sourceX + t * dx;
+    const by  = sourceY + t * dy;
+    // sine oscillation perpendicular to the edge direction
+    const off = amplitude * Math.sin(t * numWaves * 2 * Math.PI);
+    pts.push([bx - Math.sin(angle) * off, by + Math.cos(angle) * off]);
+  }
+
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+
+  // Label sits at the edge midpoint, offset slightly above the wave
+  const midX = sourceX + dx / 2 - Math.sin(angle) * (amplitude + 10);
+  const midY = sourceY + dy / 2 + Math.cos(angle) * (amplitude + 10);
+
+  return (
+    <>
+      <path
+        id={id}
+        className="react-flow__edge-path"
+        d={d}
+        fill="none"
+        style={style}
+        markerEnd={markerEnd}
+      />
+      {label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${midX}px,${midY}px)`,
+              pointerEvents: 'none',
+              ...labelStyle,
+              background: 'rgba(255,255,255,0.9)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontSize: 10,
+              fontWeight: 'bold',
+              whiteSpace: 'nowrap',
+            }}
+            className="nodrag nopan"
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+};
+
+const edgeTypes = { sinewave: SineWaveEdge };
+
+// ── Main Component ─────────────────────────────────────────────────────────
 const ResourceAllocationGraphPage = () => {
   const { showNotification } = useAuth();
   const {
@@ -31,7 +112,7 @@ const ResourceAllocationGraphPage = () => {
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-  const [cycleResult, setCycleResult] = useState(null);
+  const [cycleResult, setCycleResult]   = useState(null);
   const [buildingGraph, setBuildingGraph] = useState(false);
 
   // Build Graph Nodes & Edges
@@ -51,14 +132,14 @@ const ResourceAllocationGraphPage = () => {
       const flowNodes = [];
       const flowEdges = [];
 
-      // Layout: Processes on left (column x=100), Resources on right (column x=450)
+      // Layout: Processes left column x=100, Resources right column x=450
       const maxCount = Math.max(processes.length, resources.length);
-      const ySpacing = 130;
-      const startY = 80;
+      const ySpacing  = 130;
+      const startY    = 80;
       const procOffset = ((maxCount - processes.length) * ySpacing) / 2;
       const resOffset  = ((maxCount - resources.length)  * ySpacing) / 2;
 
-      // Process Nodes — Circles (Indigo/Blue)
+      // Process Nodes — Circles (Indigo)
       processes.forEach((p, idx) => {
         flowNodes.push({
           id: p,
@@ -76,16 +157,14 @@ const ResourceAllocationGraphPage = () => {
             justifyContent: 'center',
             fontWeight: 'bold',
             fontSize: '14px',
-            boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.15)',
+            boxShadow: '0 4px 6px -1px rgba(99,102,241,0.15)',
           },
         });
       });
 
-      // Resource Nodes — Rectangles (Amber/Orange) with instance count
+      // Resource Nodes — Rectangles (Amber) with Avail/Total
       resources.forEach((r, idx) => {
-        const inst = totalInstances[idx] !== undefined ? Number(totalInstances[idx]) : 1;
-
-        // Calculate available instances for this resource
+        const inst = Number(totalInstances[idx] ?? 1);
         let allocated = 0;
         for (let i = 0; i < processes.length; i++) {
           allocated += Number(allocation?.[i]?.[idx] ?? 0);
@@ -98,7 +177,9 @@ const ResourceAllocationGraphPage = () => {
             label: (
               <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#d97706' }}>{r}</div>
-                <div style={{ fontSize: '10px', color: '#92400e' }}>Avail: {avail} / Total: {inst}</div>
+                <div style={{ fontSize: '10px', color: '#92400e' }}>
+                  Avail: {avail} / Total: {inst}
+                </div>
               </div>
             ),
           },
@@ -116,12 +197,12 @@ const ResourceAllocationGraphPage = () => {
             textAlign: 'center',
             fontWeight: 'bold',
             fontSize: '12px',
-            boxShadow: '0 4px 6px -1px rgba(245, 158, 11, 0.15)',
+            boxShadow: '0 4px 6px -1px rgba(245,158,11,0.15)',
           },
         });
       });
 
-      // Add edges from backend cycle detection result
+      // Sine-wave edges from backend cycle result
       res.data.edges.forEach((e) => {
         const isAlloc = e.type === 'allocation';
         flowEdges.push({
@@ -129,21 +210,16 @@ const ResourceAllocationGraphPage = () => {
           source: e.source,
           target: e.target,
           label: e.label,
-          animated: true,
-          type: 'smoothstep',
+          type: 'sinewave',          // ← our custom sine-wave edge
+          animated: false,
           markerEnd: { type: 'arrowclosed', color: isAlloc ? '#10b981' : '#ef4444' },
           style: {
             stroke: isAlloc ? '#10b981' : '#ef4444',
             strokeWidth: 2,
           },
           labelStyle: {
-            fill: isAlloc ? '#059669' : '#dc2626',
-            fontSize: 10,
-            fontWeight: 'bold',
+            color: isAlloc ? '#059669' : '#dc2626',
           },
-          labelBgStyle: { fill: '#ffffff', opacity: 0.9 },
-          labelBgPadding: [3, 2],
-          labelBgBorderRadius: 4,
         });
       });
 
@@ -164,7 +240,7 @@ const ResourceAllocationGraphPage = () => {
     }
   }, [processes, resources, allocation, request, totalInstances, showNotification]);
 
-  // Auto-build graph whenever system state changes
+  // Auto-build whenever shared system state changes
   useEffect(() => {
     buildGraph(true);
   }, [buildGraph]);
@@ -182,7 +258,7 @@ const ResourceAllocationGraphPage = () => {
             <span>Interactive Resource Allocation Graph (RAG)</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Visual directed graph representing Process–Resource dependencies with automated cycle detection.
+            Visual directed graph with sine-wave edges representing Process–Resource dependencies and cycle detection.
           </p>
         </div>
 
@@ -280,11 +356,15 @@ const ResourceAllocationGraphPage = () => {
           <span className="text-slate-700 font-semibold">Resource Node (Rectangle)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-6 h-0.5 bg-emerald-500 inline-block" />
+          <svg width="32" height="14" viewBox="0 0 32 14">
+            <path d="M0,7 Q4,0 8,7 Q12,14 16,7 Q20,0 24,7 Q28,14 32,7" fill="none" stroke="#10b981" strokeWidth="2" />
+          </svg>
           <span className="text-slate-700 font-semibold">Allocation Edge (R → P)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-6 h-0.5 bg-red-500 inline-block" />
+          <svg width="32" height="14" viewBox="0 0 32 14">
+            <path d="M0,7 Q4,0 8,7 Q12,14 16,7 Q20,0 24,7 Q28,14 32,7" fill="none" stroke="#ef4444" strokeWidth="2" />
+          </svg>
           <span className="text-slate-700 font-semibold">Request Edge (P → R)</span>
         </div>
       </div>
@@ -300,6 +380,7 @@ const ResourceAllocationGraphPage = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            edgeTypes={edgeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             fitView

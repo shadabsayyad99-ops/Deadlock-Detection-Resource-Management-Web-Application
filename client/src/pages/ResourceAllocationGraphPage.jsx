@@ -1,17 +1,164 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { deadlockAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSystemState } from '../context/SystemStateContext';
-import { GitFork, AlertTriangle, CheckCircle, RefreshCw, Database, Sparkles } from 'lucide-react';
+import {
+  GitFork,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  Database,
+  Sparkles,
+  Calculator,
+  Layers,
+  ArrowRight,
+  ArrowLeft,
+  CircleDot,
+  Check,
+  ShieldAlert,
+} from 'lucide-react';
 import {
   ReactFlow,
   Controls,
   Background,
   applyNodeChanges,
   applyEdgeChanges,
+  Handle,
+  Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import EditableMatrix from '../components/EditableMatrix';
+
+// ── Custom Node Components with Dedicated Upper & Lower Handles ─────────────
+// This guarantees that Allocation edges (top track) and Request edges (bottom track)
+// NEVER collide or overlap, even when opposite edges connect the same pair of nodes!
+
+const ProcessNode = ({ data }) => {
+  return (
+    <div
+      className={`relative flex flex-col items-center justify-center rounded-full transition-all select-none ${
+        data.inCycle
+          ? 'bg-rose-50 border-3 border-rose-500 shadow-lg shadow-rose-200/50 text-rose-950'
+          : 'bg-white border-2 border-indigo-500 shadow-md shadow-indigo-100 text-indigo-950'
+      }`}
+      style={{ width: 78, height: 78 }}
+    >
+      {/* Upper Right Handle: Incoming Allocation from Resource (R -> P) */}
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="alloc-in"
+        style={{
+          top: '26%',
+          right: -4,
+          background: '#059669',
+          width: 9,
+          height: 9,
+          border: '2px solid #ffffff',
+          boxShadow: '0 0 4px rgba(5, 150, 105, 0.6)',
+        }}
+        title="Incoming Allocation (Resource -> Process)"
+      />
+
+      {/* Lower Right Handle: Outgoing Request to Resource (P -> R) */}
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="req-out"
+        style={{
+          top: '74%',
+          right: -4,
+          background: '#dc2626',
+          width: 9,
+          height: 9,
+          border: '2px solid #ffffff',
+          boxShadow: '0 0 4px rgba(220, 38, 38, 0.6)',
+        }}
+        title="Outgoing Request (Process -> Resource)"
+      />
+
+      <span className="font-black text-sm tracking-tight">{data.label}</span>
+      <span
+        className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-0.5 ${
+          data.inCycle ? 'bg-rose-200 text-rose-900 font-extrabold' : 'bg-indigo-100 text-indigo-700'
+        }`}
+      >
+        {data.inCycle ? 'DEADLOCKED' : 'PROCESS'}
+      </span>
+    </div>
+  );
+};
+
+const ResourceNode = ({ data }) => {
+  return (
+    <div
+      className={`relative flex flex-col justify-center rounded-2xl p-3 px-4 transition-all select-none ${
+        data.inCycle
+          ? 'bg-amber-50 border-3 border-amber-500 shadow-lg shadow-amber-200/50'
+          : 'bg-white border-2 border-amber-400 shadow-md shadow-amber-100'
+      }`}
+      style={{ width: 140, height: 72 }}
+    >
+      {/* Upper Left Handle: Outgoing Allocation to Process (R -> P) */}
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="alloc-out"
+        style={{
+          top: '26%',
+          left: -4,
+          background: '#059669',
+          width: 9,
+          height: 9,
+          border: '2px solid #ffffff',
+          boxShadow: '0 0 4px rgba(5, 150, 105, 0.6)',
+        }}
+        title="Outgoing Allocation (Resource -> Process)"
+      />
+
+      {/* Lower Left Handle: Incoming Request from Process (P -> R) */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="req-in"
+        style={{
+          top: '74%',
+          left: -4,
+          background: '#dc2626',
+          width: 9,
+          height: 9,
+          border: '2px solid #ffffff',
+          boxShadow: '0 0 4px rgba(220, 38, 38, 0.6)',
+        }}
+        title="Incoming Request (Process -> Resource)"
+      />
+
+      <div className="flex items-center justify-between">
+        <span className="font-black text-sm text-amber-950">{data.label}</span>
+        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+          Total: {data.total}
+        </span>
+      </div>
+
+      <div className="mt-1 flex items-center justify-between text-[11px] font-bold">
+        <span className="text-slate-500">Available:</span>
+        <span
+          className={`font-black px-1.5 py-0.2 rounded ${
+            data.available === 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+          }`}
+        >
+          {data.available} free
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// Registered outside component so React Flow never re-mounts nodes needlessly
+const nodeTypes = {
+  processNode: ProcessNode,
+  resourceNode: ResourceNode,
+};
 
 // ── Main Component ─────────────────────────────────────────────────────────
 const ResourceAllocationGraphPage = () => {
@@ -20,6 +167,7 @@ const ResourceAllocationGraphPage = () => {
     processes,
     resources,
     totalInstances,
+    available,
     allocation,
     request,
     isLoadingDB,
@@ -28,145 +176,220 @@ const ResourceAllocationGraphPage = () => {
     updateAllocationCell,
     updateRequestCell,
     updateTotalInstanceVal,
+    autoComputeAvailable,
   } = useSystemState();
 
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-  const [cycleResult, setCycleResult]   = useState(null);
+  const [cycleResult, setCycleResult] = useState(null);
   const [buildingGraph, setBuildingGraph] = useState(false);
+  const [edgeFilter, setEdgeFilter] = useState('all'); // 'all' | 'allocations' | 'requests' | 'cycles'
+
+  // Pre-calculate per-resource allocated sums and available counts
+  const resourceAvailMap = useMemo(() => {
+    return resources.map((_, rIdx) => {
+      const tot = Number(totalInstances?.[rIdx] ?? 1);
+      const allocatedSum = allocation.reduce((sum, row) => sum + (Number(row?.[rIdx]) || 0), 0);
+      return Math.max(0, tot - allocatedSum);
+    });
+  }, [resources, totalInstances, allocation]);
+
+  // Breakdown of allocations and requests for clean human inspection
+  const allocationSummary = useMemo(() => {
+    const list = [];
+    processes.forEach((p, pIdx) => {
+      resources.forEach((r, rIdx) => {
+        const val = Number(allocation?.[pIdx]?.[rIdx] || 0);
+        if (val > 0) {
+          list.push({ process: p, resource: r, count: val });
+        }
+      });
+    });
+    return list;
+  }, [processes, resources, allocation]);
+
+  const requestSummary = useMemo(() => {
+    const list = [];
+    processes.forEach((p, pIdx) => {
+      resources.forEach((r, rIdx) => {
+        const val = Number(request?.[pIdx]?.[rIdx] || 0);
+        if (val > 0) {
+          list.push({ process: p, resource: r, count: val });
+        }
+      });
+    });
+    return list;
+  }, [processes, resources, request]);
+
+  // Set of node IDs that participate in any cycle
+  const nodesInCycleSet = useMemo(() => {
+    const set = new Set();
+    if (cycleResult?.cycles?.length) {
+      cycleResult.cycles.forEach((cStr) => {
+        cStr.split(' → ').forEach((n) => set.add(n.trim()));
+      });
+    }
+    return set;
+  }, [cycleResult]);
+
+  // Set of edge IDs that participate in any cycle
+  const cycleEdgesSet = useMemo(() => {
+    const set = new Set();
+    if (cycleResult?.cycles?.length) {
+      cycleResult.cycles.forEach((cStr) => {
+        const parts = cStr.split(' → ').map((s) => s.trim());
+        for (let i = 0; i < parts.length - 1; i++) {
+          const from = parts[i];
+          const to = parts[i + 1];
+          set.add(`${from}->${to}`);
+        }
+      });
+    }
+    return set;
+  }, [cycleResult]);
 
   // Build Graph Nodes & Edges
-  const buildGraph = useCallback(async (isSilent = false) => {
-    if (!processes.length || !resources.length) return;
-    setBuildingGraph(true);
-    try {
-      const res = await deadlockAPI.cycles({
-        processes,
-        resources,
-        allocation,
-        request,
-        totalInstances,
-      });
-      setCycleResult(res.data);
-
-      const flowNodes = [];
-      const flowEdges = [];
-
-      // Layout: Processes left column x=100, Resources right column x=450
-      const maxCount = Math.max(processes.length, resources.length);
-      const ySpacing  = 130;
-      const startY    = 80;
-      const procOffset = ((maxCount - processes.length) * ySpacing) / 2;
-      const resOffset  = ((maxCount - resources.length)  * ySpacing) / 2;
-
-      // Process Nodes — Circles (Indigo)
-      processes.forEach((p, idx) => {
-        flowNodes.push({
-          id: p,
-          data: { label: p },
-          position: { x: 100, y: startY + procOffset + idx * ySpacing },
-          style: {
-            background: '#ffffff',
-            color: '#4f46e5',
-            border: '2px solid #6366f1',
-            borderRadius: '50%',
-            width: 70,
-            height: 70,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 'bold',
-            fontSize: '14px',
-            boxShadow: '0 4px 6px -1px rgba(99,102,241,0.15)',
-          },
+  const buildGraph = useCallback(
+    async (isSilent = false) => {
+      if (!processes.length || !resources.length) return;
+      setBuildingGraph(true);
+      try {
+        const res = await deadlockAPI.cycles({
+          processes,
+          resources,
+          allocation,
+          request,
+          totalInstances,
         });
-      });
+        setCycleResult(res.data);
 
-      // Resource Nodes — Rectangles (Amber) with Avail/Total
-      resources.forEach((r, idx) => {
-        const inst = Number(totalInstances[idx] ?? 1);
-        let allocated = 0;
-        for (let i = 0; i < processes.length; i++) {
-          allocated += Number(allocation?.[i]?.[idx] ?? 0);
+        // Compute cycle nodes set from response
+        const inCycle = new Set();
+        (res.data?.cycles || []).forEach((cStr) => {
+          cStr.split(' → ').forEach((n) => inCycle.add(n.trim()));
+        });
+
+        const flowNodes = [];
+        const flowEdges = [];
+
+        // Layout: Processes left column (x=90), Resources right column (x=500)
+        const maxCount = Math.max(processes.length, resources.length);
+        const ySpacing = 140;
+        const startY = 70;
+        const procOffset = ((maxCount - processes.length) * ySpacing) / 2;
+        const resOffset = ((maxCount - resources.length) * ySpacing) / 2;
+
+        // 1. Process Nodes (Circles on Left Column)
+        processes.forEach((p, idx) => {
+          flowNodes.push({
+            id: p,
+            type: 'processNode',
+            data: {
+              label: p,
+              inCycle: inCycle.has(p),
+            },
+            position: { x: 90, y: startY + procOffset + idx * ySpacing },
+          });
+        });
+
+        // 2. Resource Nodes (Rectangles on Right Column)
+        resources.forEach((r, idx) => {
+          const tot = Number(totalInstances[idx] ?? 1);
+          const avail = resourceAvailMap[idx] ?? 0;
+          flowNodes.push({
+            id: r,
+            type: 'resourceNode',
+            data: {
+              label: r,
+              total: tot,
+              available: avail,
+              inCycle: inCycle.has(r),
+            },
+            position: { x: 500, y: startY + resOffset + idx * ySpacing },
+          });
+        });
+
+        // 3. Edges with Dedicated Non-Overlapping Upper & Lower Handles
+        // Allocation: Resource (source: alloc-out at top 26%) -> Process (target: alloc-in at top 26%)
+        // Request:    Process (source: req-out at bottom 74%)  -> Resource (target: req-in at bottom 74%)
+        (res.data?.edges || []).forEach((e) => {
+          const isAlloc = e.type === 'allocation';
+          const isCycleEdge =
+            cycleEdgesSet.has(`${e.source}->${e.target}`) || inCycle.has(e.source) && inCycle.has(e.target);
+
+          // Apply current edge filter
+          if (edgeFilter === 'allocations' && !isAlloc) return;
+          if (edgeFilter === 'requests' && isAlloc) return;
+          if (edgeFilter === 'cycles' && !isCycleEdge) return;
+
+          flowEdges.push({
+            id: e.id,
+            source: e.source,
+            sourceHandle: isAlloc ? 'alloc-out' : 'req-out',
+            target: e.target,
+            targetHandle: isAlloc ? 'alloc-in' : 'req-in',
+            type: 'bezier',
+            animated: true,
+            markerEnd: {
+              type: 'arrowclosed',
+              color: isAlloc ? '#059669' : '#dc2626',
+              width: 18,
+              height: 18,
+            },
+            style: {
+              stroke: isAlloc ? '#059669' : '#dc2626',
+              strokeWidth: isCycleEdge ? 3.5 : 2.5,
+              opacity: edgeFilter === 'cycles' ? (isCycleEdge ? 1 : 0.2) : 1,
+            },
+            label: isAlloc
+              ? `Allocated: ${e.label.replace(/\D/g, '') || 1}`
+              : `Requests: ${e.label.replace(/\D/g, '') || 1}`,
+            labelStyle: {
+              fill: isAlloc ? '#047857' : '#991b1b',
+              fontSize: 10,
+              fontWeight: '900',
+            },
+            labelBgStyle: {
+              fill: isAlloc ? '#ecfdf5' : '#fff1f2',
+              stroke: isAlloc ? '#6ee7b7' : '#fca5a5',
+              strokeWidth: 1.5,
+              opacity: 0.96,
+            },
+            labelBgPadding: [6, 3],
+            labelBgBorderRadius: 6,
+          });
+        });
+
+        setNodes(flowNodes);
+        setEdges(flowEdges);
+
+        if (!isSilent) {
+          if (res.data.hasCycle) {
+            showNotification('⚠ Deadlock Cycle Detected in Resource Allocation Graph!', 'warning');
+          } else {
+            showNotification('No circular wait detected in the graph.', 'success');
+          }
         }
-        const avail = inst - allocated;
-
-        flowNodes.push({
-          id: r,
-          data: {
-            label: (
-              <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#d97706' }}>{r}</div>
-                <div style={{ fontSize: '10px', color: '#92400e' }}>
-                  Avail: {avail} / Total: {inst}
-                </div>
-              </div>
-            ),
-          },
-          position: { x: 450, y: startY + resOffset + idx * ySpacing },
-          style: {
-            background: '#fffbeb',
-            color: '#d97706',
-            border: '2px solid #f59e0b',
-            borderRadius: '12px',
-            width: 120,
-            height: 60,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            fontWeight: 'bold',
-            fontSize: '12px',
-            boxShadow: '0 4px 6px -1px rgba(245,158,11,0.15)',
-          },
-        });
-      });
-
-      // Smooth curved dashed arrows (bezier S-curve with dashed stroke)
-      res.data.edges.forEach((e) => {
-        const isAlloc = e.type === 'allocation';
-        flowEdges.push({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          label: e.label,
-          type: 'smoothstep',
-          animated: false,
-          markerEnd: { type: 'arrowclosed', color: isAlloc ? '#10b981' : '#ef4444' },
-          style: {
-            stroke: isAlloc ? '#10b981' : '#ef4444',
-            strokeWidth: 2.5,
-            strokeDasharray: '8 5',
-          },
-          labelStyle: {
-            fill: isAlloc ? '#047857' : '#b91c1c',
-            fontSize: 10,
-            fontWeight: 'bold',
-          },
-          labelBgStyle: { fill: '#ffffff', opacity: 0.9 },
-          labelBgPadding: [4, 2],
-          labelBgBorderRadius: 4,
-        });
-      });
-
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-
-      if (!isSilent) {
-        if (res.data.hasCycle) {
-          showNotification('⚠ Potential Deadlock Cycle Detected in RAG!', 'warning');
-        } else {
-          showNotification('No cycles detected in Resource Allocation Graph.', 'success');
-        }
+      } catch {
+        if (!isSilent) showNotification('Failed to generate Resource Allocation Graph.', 'error');
+      } finally {
+        setBuildingGraph(false);
       }
-    } catch {
-      if (!isSilent) showNotification('Failed to generate Resource Allocation Graph.', 'error');
-    } finally {
-      setBuildingGraph(false);
-    }
-  }, [processes, resources, allocation, request, totalInstances, showNotification]);
+    },
+    [
+      processes,
+      resources,
+      allocation,
+      request,
+      totalInstances,
+      resourceAvailMap,
+      edgeFilter,
+      cycleEdgesSet,
+      showNotification,
+    ]
+  );
 
-  // Auto-build whenever shared system state changes
+  // Auto-build whenever shared system state or filter changes
   useEffect(() => {
     buildGraph(true);
   }, [buildGraph]);
@@ -176,24 +399,26 @@ const ResourceAllocationGraphPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      {/* Top Header Card */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div>
-          <h1 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
-            <GitFork className="w-5 h-5 text-amber-600" />
+          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+            <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl">
+              <GitFork className="w-6 h-6" />
+            </div>
             <span>Interactive Resource Allocation Graph (RAG)</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Visual directed graph with sine-wave edges representing Process–Resource dependencies and cycle detection.
+          <p className="text-sm text-slate-600 mt-1">
+            Visual directed graph representing Process&ndash;Resource dependencies with separate tracks for Allocations and Requests.
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Sync DB */}
+          {/* Sync Live DB */}
           <button
             onClick={() => syncWithDB(true)}
             disabled={isLoadingDB}
-            className="px-4 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 flex items-center gap-2 transition-all"
+            className="px-4 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs border border-indigo-200 flex items-center gap-2 transition-all shadow-xs"
           >
             {isLoadingDB ? (
               <div className="w-3.5 h-3.5 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin" />
@@ -203,8 +428,18 @@ const ResourceAllocationGraphPage = () => {
             <span>Sync Live DB</span>
           </button>
 
+          {/* Auto Compute Available */}
+          <button
+            onClick={autoComputeAvailable}
+            className="px-4 py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs border border-emerald-200 flex items-center gap-2 transition-all shadow-xs"
+            title="Compute Available vector from Total - Sum(Allocation)"
+          >
+            <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Auto-Compute Avail</span>
+          </button>
+
           {/* Preset Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5 shadow-xs">
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             <select
               onChange={(e) => {
@@ -214,38 +449,40 @@ const ResourceAllocationGraphPage = () => {
                 }
               }}
               defaultValue=""
-              className="bg-transparent text-xs text-slate-700 font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs text-slate-700 font-extrabold focus:outline-none cursor-pointer"
             >
-              <option value="" disabled>Load Preset...</option>
-              <option value="deadlock">Classic Deadlock (4 Processes)</option>
+              <option value="" disabled>Load Preset Scenario...</option>
+              <option value="deadlock">Active 4-Process Deadlock (P0&ndash;P3)</option>
+              <option value="simple">Classic 3-Process System (P0, P1, P2)</option>
               <option value="safe">Banker's Safe State (5 Processes)</option>
-              <option value="simple">Simple 3-Process System</option>
             </select>
           </div>
 
-          {/* Refresh Button */}
+          {/* Refresh Graph Button */}
           <button
             onClick={() => buildGraph(false)}
             disabled={buildingGraph}
-            className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-2 transition-all"
+            className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-xs shadow-md shadow-amber-400/20 flex items-center gap-2 cursor-pointer transition-all"
           >
             {buildingGraph ? (
-              <div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <RefreshCw className="w-3.5 h-3.5" />
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>Refresh Graph</span>
+              </>
             )}
-            <span>Refresh Graph</span>
           </button>
         </div>
       </div>
 
-      {/* Cycle Detection Banner */}
+      {/* Cycle Detection Status Banner */}
       {cycleResult && (
         <div
           className={`p-5 rounded-2xl border text-xs ${
             cycleResult.hasCycle
-              ? 'bg-amber-50 border-amber-200 text-amber-900'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              ? 'bg-amber-50 border-amber-300 text-amber-950 shadow-xs'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-950 shadow-xs'
           }`}
         >
           <div className="flex items-start gap-3">
@@ -254,16 +491,29 @@ const ResourceAllocationGraphPage = () => {
             ) : (
               <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             )}
-            <div className="space-y-1">
-              <h3 className="font-bold text-sm">
-                {cycleResult.hasCycle
-                  ? '⚠ Potential Deadlock Cycle Detected'
-                  : '✓ No Graph Cycles Detected'}
-              </h3>
-              <p>{cycleResult.educationalNote}</p>
-              {cycleResult.cycles && cycleResult.cycles.length > 0 && (
-                <div className="pt-1 font-mono font-bold text-amber-800">
-                  Detected Cycle Paths: {cycleResult.cycles.join(' | ')}
+            <div className="space-y-1.5 flex-1">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="font-black text-sm">
+                  {cycleResult.hasCycle
+                    ? '⚠ Potential Deadlock Cycle Detected in Graph'
+                    : '✓ No Circular Wait Detected in Graph'}
+                </h3>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/80 border border-amber-200 text-amber-900 font-bold">
+                  {edges.length} Total Edges Active
+                </span>
+              </div>
+              <p className="leading-relaxed">{cycleResult.educationalNote}</p>
+              {cycleResult.cycles?.length > 0 && (
+                <div className="pt-1 flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-black text-amber-900 text-xs">Detected Cycle Paths:</span>
+                  {cycleResult.cycles.map((c, i) => (
+                    <span
+                      key={i}
+                      className="px-3 py-1 rounded-lg bg-amber-100 text-amber-950 border border-amber-300 font-mono font-black text-[11px] shadow-2xs"
+                    >
+                      {c}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -271,34 +521,78 @@ const ResourceAllocationGraphPage = () => {
         </div>
       )}
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-6 text-xs font-mono bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-2">
-          <span className="w-4 h-4 rounded-full bg-white border-2 border-indigo-600 inline-block" />
-          <span className="text-slate-700 font-semibold">Process Node (Circle)</span>
+      {/* Interactive Legend & Filter Controls Toolbar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Visual Legend */}
+        <div className="flex flex-wrap items-center gap-5 text-xs font-mono">
+          <div className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded-full bg-white border-2 border-indigo-600 inline-block" />
+            <span className="text-slate-800 font-bold">Process (Circle)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-4 rounded-md bg-amber-50 border-2 border-amber-500 inline-block" />
+            <span className="text-slate-800 font-bold">Resource (Rectangle)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-1 bg-emerald-600 rounded inline-block" />
+            <span className="text-emerald-800 font-black">Allocation (R &rarr; P, Upper Track)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-5 h-1 bg-rose-600 rounded inline-block" />
+            <span className="text-rose-800 font-black">Request (P &rarr; R, Lower Track)</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-10 h-4 rounded-md bg-amber-50 border-2 border-amber-500 inline-block" />
-          <span className="text-slate-700 font-semibold">Resource Node (Rectangle)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg width="36" height="14" viewBox="0 0 36 14">
-            <path d="M0,7 C10,7 14,2 18,2 C22,2 26,12 36,12" fill="none" stroke="#10b981" strokeWidth="2.5" strokeDasharray="5 3" />
-            <polygon points="32,9 36,12 32,15" fill="#10b981" />
-          </svg>
-          <span className="text-slate-700 font-semibold">Allocation Edge (R → P)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg width="36" height="14" viewBox="0 0 36 14">
-            <path d="M0,7 C10,7 14,2 18,2 C22,2 26,12 36,12" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeDasharray="5 3" />
-            <polygon points="32,9 36,12 32,15" fill="#ef4444" />
-          </svg>
-          <span className="text-slate-700 font-semibold">Request Edge (P → R)</span>
+
+        {/* Edge Visibility Filter Tabs */}
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
+          <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Show:</span>
+          <button
+            onClick={() => setEdgeFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+              edgeFilter === 'all'
+                ? 'bg-white text-indigo-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            All Edges
+          </button>
+          <button
+            onClick={() => setEdgeFilter('allocations')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+              edgeFilter === 'allocations'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-emerald-700'
+            }`}
+          >
+            Allocations Only
+          </button>
+          <button
+            onClick={() => setEdgeFilter('requests')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+              edgeFilter === 'requests'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-rose-700'
+            }`}
+          >
+            Requests Only
+          </button>
+          {cycleResult?.hasCycle && (
+            <button
+              onClick={() => setEdgeFilter('cycles')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                edgeFilter === 'cycles'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-amber-800'
+              }`}
+            >
+              Cycle Edges Only
+            </button>
+          )}
         </div>
       </div>
 
-      {/* React Flow Canvas */}
-      <div className="bg-white rounded-3xl border border-slate-200 h-[520px] relative overflow-hidden shadow-sm">
+      {/* React Flow Graph Visual Canvas */}
+      <div className="bg-white rounded-3xl border border-slate-200 h-[560px] relative overflow-hidden shadow-sm">
         {nodes.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
             <GitFork className="w-12 h-12 opacity-30 animate-pulse" />
@@ -308,6 +602,7 @@ const ResourceAllocationGraphPage = () => {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={nodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             fitView
@@ -318,43 +613,142 @@ const ResourceAllocationGraphPage = () => {
         )}
       </div>
 
-      {/* Editable Matrix Tables */}
+      {/* Explanatory Breakdown: "Who Holds What" & "Who Is Waiting For What" */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Allocations Card */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-emerald-100 pb-2.5">
+            <div className="flex items-center gap-2 text-emerald-800">
+              <ArrowLeft className="w-4 h-4 text-emerald-600" />
+              <h3 className="font-black text-sm uppercase tracking-wide">
+                Current Allocations (Resource &rarr; Process)
+              </h3>
+            </div>
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-extrabold border border-emerald-200">
+              {allocationSummary.length} Active Holdings
+            </span>
+          </div>
+
+          {allocationSummary.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No resources currently allocated.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {allocationSummary.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between bg-emerald-50/60 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-mono font-bold"
+                >
+                  <div className="flex items-center gap-1.5 text-emerald-950">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px]">
+                      {item.resource}
+                    </span>
+                    <span className="text-emerald-600">&rarr;</span>
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 text-[10px]">
+                      {item.process}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black text-[10px]">
+                    {item.count} units
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Requests Card */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-rose-100 pb-2.5">
+            <div className="flex items-center gap-2 text-rose-800">
+              <ArrowRight className="w-4 h-4 text-rose-600" />
+              <h3 className="font-black text-sm uppercase tracking-wide">
+                Waiting Requests (Process &rarr; Resource)
+              </h3>
+            </div>
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-rose-50 text-rose-800 font-extrabold border border-rose-200">
+              {requestSummary.length} Blocked Requests
+            </span>
+          </div>
+
+          {requestSummary.length === 0 ? (
+            <p className="text-xs text-emerald-600 font-bold">No processes are waiting for resources.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {requestSummary.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between bg-rose-50/60 border border-rose-200 px-3 py-2 rounded-xl text-xs font-mono font-bold"
+                >
+                  <div className="flex items-center gap-1.5 text-rose-950">
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 text-[10px]">
+                      {item.process}
+                    </span>
+                    <span className="text-rose-600">&rarr;</span>
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px]">
+                      {item.resource}
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-black text-[10px]">
+                    {item.count} units
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Editable Matrix Data Tables (Live Synced with all pages) */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="border-b border-slate-100 pb-3">
-          <h2 className="text-base font-extrabold text-slate-900">
-            Graph Data Tables (Live Synced)
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Edit the matrices below — the graph above rebuilds automatically on every change.
-          </p>
+        <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-black text-slate-900">
+              Graph Data Tables (Live Synchronized Across All Pages)
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Editing any cell here immediately redraws the graph above and synchronizes with Deadlock Detection, Banker's, and Recovery.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-50 px-3 py-1 rounded-xl border border-slate-200">
+            {processes.length} Processes &bull; {resources.length} Resources
+          </span>
         </div>
 
         {/* Total Instances Row */}
         <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-          <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">
-            Total Resource Instances [TotalInstances[j]]
-          </p>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black text-amber-800 uppercase tracking-wider">
+              Total Hardware Instances [TotalInstances[j]]
+            </p>
+            <span className="text-[11px] text-slate-500">
+              Available is calculated as Total &minus; Allocated
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-4">
             {resources.map((r, idx) => (
-              <div key={r} className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-bold text-slate-500">{r}</span>
+              <div
+                key={r}
+                className="flex items-center gap-2 bg-white border border-amber-300 rounded-xl px-3 py-1.5 shadow-2xs"
+              >
+                <span className="font-mono font-black text-xs text-amber-900">{r}:</span>
                 <input
                   type="number"
                   min="1"
                   value={totalInstances[idx] ?? 1}
                   onChange={(e) => updateTotalInstanceVal(idx, e.target.value)}
-                  className="w-16 text-center bg-white border border-amber-300 rounded-xl px-2 py-1.5 text-amber-900 font-extrabold text-sm focus:outline-none focus:border-amber-500"
+                  className="w-14 text-center bg-transparent font-extrabold text-sm text-slate-900 focus:outline-none"
                 />
               </div>
             ))}
           </div>
         </div>
 
-        {/* Allocation & Request Matrices */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Allocation & Request Matrices Side-by-Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
           <div className="space-y-1">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider pl-1">
-              Allocation Matrix — what each process currently holds (R → P)
+            <p className="text-xs font-black text-emerald-800 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block" />
+              <span>Allocation Matrix &mdash; What Each Process Holds (R &rarr; P)</span>
             </p>
             <EditableMatrix
               label="Allocation Matrix"
@@ -367,8 +761,9 @@ const ResourceAllocationGraphPage = () => {
           </div>
 
           <div className="space-y-1">
-            <p className="text-xs font-bold text-rose-700 uppercase tracking-wider pl-1">
-              Request Matrix — what each process is waiting for (P → R)
+            <p className="text-xs font-black text-rose-800 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-600 inline-block" />
+              <span>Request Matrix &mdash; What Each Process is Waiting For (P &rarr; R)</span>
             </p>
             <EditableMatrix
               label="Request Matrix"

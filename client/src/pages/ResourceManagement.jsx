@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { resourceAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSystemState } from '../context/SystemStateContext';
 import { HardDrive, Plus, Search, Edit, Trash2, X } from 'lucide-react';
 
 const ResourceManagement = () => {
@@ -10,6 +11,7 @@ const ResourceManagement = () => {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ resourceId: '', name: '', totalInstances: 1, availableInstances: 1 });
   const { showNotification } = useAuth();
+  const { syncWithDB } = useSystemState();
 
   const fetchResources = async () => {
     try {
@@ -51,7 +53,8 @@ const ResourceManagement = () => {
         showNotification('Resource created successfully', 'success');
       }
       setShowModal(false);
-      fetchResources();
+      await fetchResources();
+      syncWithDB(false);
     } catch (err) {
       showNotification(err.response?.data?.message || 'Error saving resource', 'error');
     }
@@ -62,7 +65,8 @@ const ResourceManagement = () => {
       try {
         await resourceAPI.delete(id);
         showNotification('Resource deleted successfully', 'info');
-        fetchResources();
+        await fetchResources();
+        syncWithDB(false);
       } catch (err) {
         showNotification('Failed to delete resource', 'error');
       }

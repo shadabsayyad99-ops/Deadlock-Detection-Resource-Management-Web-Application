@@ -62,11 +62,11 @@ export const PRESETS = {
     ],
   },
   simple: {
-    name: 'Simple 3-Process System',
+    name: 'Classic 3-Process System (P0, P1, P2)',
     processes: ['P0', 'P1', 'P2'],
     resources: ['R1', 'R2', 'R3'],
-    totalInstances: [3, 2, 2],
-    available: [1, 1, 0],
+    totalInstances: [2, 1, 2],
+    available: [0, 0, 1],
     allocation: [
       [1, 0, 1],
       [0, 1, 0],
@@ -150,6 +150,7 @@ export const SystemStateProvider = ({ children }) => {
   const syncWithDB = useCallback(async (notify = true) => {
     setIsLoadingDB(true);
     try {
+      const [pRes, rRes] = await Promise.all([processAPI.getAll(), resourceAPI.getAll()]);
       const rawProcs = (pRes.data || []).sort((a, b) => {
         const numA = parseInt(String(a.processId).replace(/\D/g, '')) || 0;
         const numB = parseInt(String(b.processId).replace(/\D/g, '')) || 0;

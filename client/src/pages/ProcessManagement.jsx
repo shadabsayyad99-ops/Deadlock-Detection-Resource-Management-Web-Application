@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { processAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSystemState } from '../context/SystemStateContext';
 import { Cpu, Plus, Search, Filter, Edit, Trash2, X } from 'lucide-react';
 
 const ProcessManagement = () => {
@@ -11,6 +12,7 @@ const ProcessManagement = () => {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({ processId: '', name: '', priority: 1, status: 'READY' });
   const { showNotification } = useAuth();
+  const { syncWithDB } = useSystemState();
 
   const fetchProcesses = async () => {
     try {
@@ -53,7 +55,8 @@ const ProcessManagement = () => {
         showNotification('Process created successfully', 'success');
       }
       setShowModal(false);
-      fetchProcesses();
+      await fetchProcesses();
+      syncWithDB(false);
     } catch (err) {
       showNotification(err.response?.data?.message || 'Error saving process', 'error');
     }
@@ -64,7 +67,8 @@ const ProcessManagement = () => {
       try {
         await processAPI.delete(id);
         showNotification('Process deleted successfully', 'info');
-        fetchProcesses();
+        await fetchProcesses();
+        syncWithDB(false);
       } catch (err) {
         showNotification('Failed to delete process', 'error');
       }

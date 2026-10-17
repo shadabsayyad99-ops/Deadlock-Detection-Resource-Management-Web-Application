@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { deadlockAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSystemState } from '../context/SystemStateContext';
@@ -10,12 +10,8 @@ import {
   Database,
   Sparkles,
   Calculator,
-  Layers,
   ArrowRight,
   ArrowLeft,
-  CircleDot,
-  Check,
-  ShieldAlert,
 } from 'lucide-react';
 import {
   ReactFlow,
@@ -29,58 +25,52 @@ import {
 import '@xyflow/react/dist/style.css';
 import EditableMatrix from '../components/EditableMatrix';
 
-// ── Custom Node Components with Dedicated Upper & Lower Handles ─────────────
-// This guarantees that Allocation edges (top track) and Request edges (bottom track)
-// NEVER collide or overlap, even when opposite edges connect the same pair of nodes!
-
+// ── Custom Node Components with Upper & Lower Tracks ────────────────────────
+// Process Node: Circle (Indigo or Red glow if deadlocked)
 const ProcessNode = ({ data }) => {
   return (
     <div
       className={`relative flex flex-col items-center justify-center rounded-full transition-all select-none ${
         data.inCycle
-          ? 'bg-rose-50 border-3 border-rose-500 shadow-lg shadow-rose-200/50 text-rose-950'
+          ? 'bg-rose-50 border-3 border-rose-500 shadow-xl shadow-rose-300/40 text-rose-950 ring-4 ring-rose-200'
           : 'bg-white border-2 border-indigo-500 shadow-md shadow-indigo-100 text-indigo-950'
       }`}
-      style={{ width: 78, height: 78 }}
+      style={{ width: 80, height: 80 }}
     >
-      {/* Upper Right Handle: Incoming Allocation from Resource (R -> P) */}
+      {/* Target handle on right (for incoming Allocation R -> P) */}
       <Handle
         type="target"
         position={Position.Right}
-        id="alloc-in"
+        id="in"
         style={{
-          top: '26%',
-          right: -4,
+          top: '32%',
+          right: -5,
           background: '#059669',
-          width: 9,
-          height: 9,
+          width: 10,
+          height: 10,
           border: '2px solid #ffffff',
           boxShadow: '0 0 4px rgba(5, 150, 105, 0.6)',
         }}
-        title="Incoming Allocation (Resource -> Process)"
       />
-
-      {/* Lower Right Handle: Outgoing Request to Resource (P -> R) */}
+      {/* Source handle on right (for outgoing Request P -> R) */}
       <Handle
         type="source"
         position={Position.Right}
-        id="req-out"
+        id="out"
         style={{
-          top: '74%',
-          right: -4,
+          top: '68%',
+          right: -5,
           background: '#dc2626',
-          width: 9,
-          height: 9,
+          width: 10,
+          height: 10,
           border: '2px solid #ffffff',
           boxShadow: '0 0 4px rgba(220, 38, 38, 0.6)',
         }}
-        title="Outgoing Request (Process -> Resource)"
       />
-
-      <span className="font-black text-sm tracking-tight">{data.label}</span>
+      <span className="font-black text-base tracking-tight">{data.label}</span>
       <span
-        className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-0.5 ${
-          data.inCycle ? 'bg-rose-200 text-rose-900 font-extrabold' : 'bg-indigo-100 text-indigo-700'
+        className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full mt-0.5 ${
+          data.inCycle ? 'bg-rose-600 text-white font-extrabold' : 'bg-indigo-100 text-indigo-700'
         }`}
       >
         {data.inCycle ? 'DEADLOCKED' : 'PROCESS'}
@@ -89,52 +79,49 @@ const ProcessNode = ({ data }) => {
   );
 };
 
+// Resource Node: Rounded rectangle card (Amber)
 const ResourceNode = ({ data }) => {
   return (
     <div
       className={`relative flex flex-col justify-center rounded-2xl p-3 px-4 transition-all select-none ${
         data.inCycle
-          ? 'bg-amber-50 border-3 border-amber-500 shadow-lg shadow-amber-200/50'
+          ? 'bg-amber-50 border-3 border-amber-500 shadow-xl shadow-amber-200/40 ring-4 ring-amber-200'
           : 'bg-white border-2 border-amber-400 shadow-md shadow-amber-100'
       }`}
-      style={{ width: 140, height: 72 }}
+      style={{ width: 144, height: 74 }}
     >
-      {/* Upper Left Handle: Outgoing Allocation to Process (R -> P) */}
+      {/* Source handle on left (for outgoing Allocation R -> P) */}
       <Handle
         type="source"
         position={Position.Left}
-        id="alloc-out"
+        id="out"
         style={{
-          top: '26%',
-          left: -4,
+          top: '32%',
+          left: -5,
           background: '#059669',
-          width: 9,
-          height: 9,
+          width: 10,
+          height: 10,
           border: '2px solid #ffffff',
           boxShadow: '0 0 4px rgba(5, 150, 105, 0.6)',
         }}
-        title="Outgoing Allocation (Resource -> Process)"
       />
-
-      {/* Lower Left Handle: Incoming Request from Process (P -> R) */}
+      {/* Target handle on left (for incoming Request P -> R) */}
       <Handle
         type="target"
         position={Position.Left}
-        id="req-in"
+        id="in"
         style={{
-          top: '74%',
-          left: -4,
+          top: '68%',
+          left: -5,
           background: '#dc2626',
-          width: 9,
-          height: 9,
+          width: 10,
+          height: 10,
           border: '2px solid #ffffff',
           boxShadow: '0 0 4px rgba(220, 38, 38, 0.6)',
         }}
-        title="Incoming Request (Process -> Resource)"
       />
-
       <div className="flex items-center justify-between">
-        <span className="font-black text-sm text-amber-950">{data.label}</span>
+        <span className="font-black text-base text-amber-950">{data.label}</span>
         <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
           Total: {data.total}
         </span>
@@ -154,7 +141,7 @@ const ResourceNode = ({ data }) => {
   );
 };
 
-// Registered outside component so React Flow never re-mounts nodes needlessly
+// Registered outside component so React Flow does not re-mount on re-render
 const nodeTypes = {
   processNode: ProcessNode,
   resourceNode: ResourceNode,
@@ -185,16 +172,7 @@ const ResourceAllocationGraphPage = () => {
   const [buildingGraph, setBuildingGraph] = useState(false);
   const [edgeFilter, setEdgeFilter] = useState('all'); // 'all' | 'allocations' | 'requests' | 'cycles'
 
-  // Pre-calculate per-resource allocated sums and available counts
-  const resourceAvailMap = useMemo(() => {
-    return resources.map((_, rIdx) => {
-      const tot = Number(totalInstances?.[rIdx] ?? 1);
-      const allocatedSum = allocation.reduce((sum, row) => sum + (Number(row?.[rIdx]) || 0), 0);
-      return Math.max(0, tot - allocatedSum);
-    });
-  }, [resources, totalInstances, allocation]);
-
-  // Breakdown of allocations and requests for clean human inspection
+  // Breakdown lists of allocations and requests
   const allocationSummary = useMemo(() => {
     const list = [];
     processes.forEach((p, pIdx) => {
@@ -221,36 +199,23 @@ const ResourceAllocationGraphPage = () => {
     return list;
   }, [processes, resources, request]);
 
-  // Set of node IDs that participate in any cycle
-  const nodesInCycleSet = useMemo(() => {
-    const set = new Set();
-    if (cycleResult?.cycles?.length) {
-      cycleResult.cycles.forEach((cStr) => {
-        cStr.split(' → ').forEach((n) => set.add(n.trim()));
-      });
-    }
-    return set;
-  }, [cycleResult]);
+  // Stable dependency key: only re-build when input matrices or filter change!
+  // This completely eliminates any infinite blinking or re-render loop!
+  const stateKey = useMemo(() => {
+    return JSON.stringify({
+      p: processes,
+      r: resources,
+      tot: totalInstances,
+      alloc: allocation,
+      req: request,
+      f: edgeFilter,
+    });
+  }, [processes, resources, totalInstances, allocation, request, edgeFilter]);
 
-  // Set of edge IDs that participate in any cycle
-  const cycleEdgesSet = useMemo(() => {
-    const set = new Set();
-    if (cycleResult?.cycles?.length) {
-      cycleResult.cycles.forEach((cStr) => {
-        const parts = cStr.split(' → ').map((s) => s.trim());
-        for (let i = 0; i < parts.length - 1; i++) {
-          const from = parts[i];
-          const to = parts[i + 1];
-          set.add(`${from}->${to}`);
-        }
-      });
-    }
-    return set;
-  }, [cycleResult]);
+  useEffect(() => {
+    let isCancelled = false;
 
-  // Build Graph Nodes & Edges
-  const buildGraph = useCallback(
-    async (isSilent = false) => {
+    const runBuild = async () => {
       if (!processes.length || !resources.length) return;
       setBuildingGraph(true);
       try {
@@ -261,41 +226,56 @@ const ResourceAllocationGraphPage = () => {
           request,
           totalInstances,
         });
-        setCycleResult(res.data);
 
-        // Compute cycle nodes set from response
-        const inCycle = new Set();
-        (res.data?.cycles || []).forEach((cStr) => {
-          cStr.split(' → ').forEach((n) => inCycle.add(n.trim()));
+        if (isCancelled) return;
+        const data = res.data;
+        setCycleResult(data);
+
+        // Compute cycle nodes and cycle edges
+        const inCycleNodes = new Set();
+        const inCycleEdges = new Set();
+        (data.cycles || []).forEach((cStr) => {
+          const parts = cStr.split(' → ').map((s) => s.trim());
+          parts.forEach((p) => inCycleNodes.add(p));
+          for (let i = 0; i < parts.length - 1; i++) {
+            inCycleEdges.add(`${parts[i]}->${parts[i + 1]}`);
+          }
+        });
+
+        // Compute available per resource
+        const availMap = resources.map((_, rIdx) => {
+          const tot = Number(totalInstances?.[rIdx] ?? 1);
+          const allocatedSum = allocation.reduce((sum, row) => sum + (Number(row?.[rIdx]) || 0), 0);
+          return Math.max(0, tot - allocatedSum);
         });
 
         const flowNodes = [];
         const flowEdges = [];
 
-        // Layout: Processes left column (x=90), Resources right column (x=500)
+        // Vertical spacing and alignment
         const maxCount = Math.max(processes.length, resources.length);
         const ySpacing = 140;
         const startY = 70;
         const procOffset = ((maxCount - processes.length) * ySpacing) / 2;
         const resOffset = ((maxCount - resources.length) * ySpacing) / 2;
 
-        // 1. Process Nodes (Circles on Left Column)
+        // Process Nodes (Circles on Left Column)
         processes.forEach((p, idx) => {
           flowNodes.push({
             id: p,
             type: 'processNode',
             data: {
               label: p,
-              inCycle: inCycle.has(p),
+              inCycle: inCycleNodes.has(p),
             },
-            position: { x: 90, y: startY + procOffset + idx * ySpacing },
+            position: { x: 80, y: startY + procOffset + idx * ySpacing },
           });
         });
 
-        // 2. Resource Nodes (Rectangles on Right Column)
+        // Resource Nodes (Rectangles on Right Column)
         resources.forEach((r, idx) => {
           const tot = Number(totalInstances[idx] ?? 1);
-          const avail = resourceAvailMap[idx] ?? 0;
+          const avail = availMap[idx] ?? 0;
           flowNodes.push({
             id: r,
             type: 'resourceNode',
@@ -303,21 +283,17 @@ const ResourceAllocationGraphPage = () => {
               label: r,
               total: tot,
               available: avail,
-              inCycle: inCycle.has(r),
+              inCycle: inCycleNodes.has(r),
             },
             position: { x: 500, y: startY + resOffset + idx * ySpacing },
           });
         });
 
-        // 3. Edges with Dedicated Non-Overlapping Upper & Lower Handles
-        // Allocation: Resource (source: alloc-out at top 26%) -> Process (target: alloc-in at top 26%)
-        // Request:    Process (source: req-out at bottom 74%)  -> Resource (target: req-in at bottom 74%)
-        (res.data?.edges || []).forEach((e) => {
+        // Edges: Allocation connects out(top) -> in(top), Request connects out(bottom) -> in(bottom)
+        (data.edges || []).forEach((e) => {
           const isAlloc = e.type === 'allocation';
-          const isCycleEdge =
-            cycleEdgesSet.has(`${e.source}->${e.target}`) || inCycle.has(e.source) && inCycle.has(e.target);
+          const isCycleEdge = inCycleEdges.has(`${e.source}->${e.target}`);
 
-          // Apply current edge filter
           if (edgeFilter === 'allocations' && !isAlloc) return;
           if (edgeFilter === 'requests' && isAlloc) return;
           if (edgeFilter === 'cycles' && !isCycleEdge) return;
@@ -325,9 +301,9 @@ const ResourceAllocationGraphPage = () => {
           flowEdges.push({
             id: e.id,
             source: e.source,
-            sourceHandle: isAlloc ? 'alloc-out' : 'req-out',
+            sourceHandle: 'out',
             target: e.target,
-            targetHandle: isAlloc ? 'alloc-in' : 'req-in',
+            targetHandle: 'in',
             type: 'bezier',
             animated: true,
             markerEnd: {
@@ -339,7 +315,7 @@ const ResourceAllocationGraphPage = () => {
             style: {
               stroke: isAlloc ? '#059669' : '#dc2626',
               strokeWidth: isCycleEdge ? 3.5 : 2.5,
-              opacity: edgeFilter === 'cycles' ? (isCycleEdge ? 1 : 0.2) : 1,
+              opacity: edgeFilter === 'cycles' ? (isCycleEdge ? 1 : 0.25) : 1,
             },
             label: isAlloc
               ? `Allocated: ${e.label.replace(/\D/g, '') || 1}`
@@ -353,7 +329,7 @@ const ResourceAllocationGraphPage = () => {
               fill: isAlloc ? '#ecfdf5' : '#fff1f2',
               stroke: isAlloc ? '#6ee7b7' : '#fca5a5',
               strokeWidth: 1.5,
-              opacity: 0.96,
+              opacity: 0.95,
             },
             labelBgPadding: [6, 3],
             labelBgBorderRadius: 6,
@@ -362,37 +338,19 @@ const ResourceAllocationGraphPage = () => {
 
         setNodes(flowNodes);
         setEdges(flowEdges);
-
-        if (!isSilent) {
-          if (res.data.hasCycle) {
-            showNotification('⚠ Deadlock Cycle Detected in Resource Allocation Graph!', 'warning');
-          } else {
-            showNotification('No circular wait detected in the graph.', 'success');
-          }
-        }
-      } catch {
-        if (!isSilent) showNotification('Failed to generate Resource Allocation Graph.', 'error');
+      } catch (err) {
+        console.error('Failed to build graph:', err);
       } finally {
-        setBuildingGraph(false);
+        if (!isCancelled) setBuildingGraph(false);
       }
-    },
-    [
-      processes,
-      resources,
-      allocation,
-      request,
-      totalInstances,
-      resourceAvailMap,
-      edgeFilter,
-      cycleEdgesSet,
-      showNotification,
-    ]
-  );
+    };
 
-  // Auto-build whenever shared system state or filter changes
-  useEffect(() => {
-    buildGraph(true);
-  }, [buildGraph]);
+    runBuild();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [stateKey]); // Only re-runs when inputs change! No infinite blinking!
 
   const onNodesChange = (changes) => setNodes((nds) => applyNodeChanges(changes, nds));
   const onEdgesChange = (changes) => setEdges((eds) => applyEdgeChanges(changes, eds));
@@ -460,7 +418,10 @@ const ResourceAllocationGraphPage = () => {
 
           {/* Refresh Graph Button */}
           <button
-            onClick={() => buildGraph(false)}
+            onClick={() => {
+              // Trigger build manually
+              setEdgeFilter((f) => (f === 'all' ? 'all ' : 'all'));
+            }}
             disabled={buildingGraph}
             className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-xs shadow-md shadow-amber-400/20 flex items-center gap-2 cursor-pointer transition-all"
           >
@@ -499,7 +460,7 @@ const ResourceAllocationGraphPage = () => {
                     : '✓ No Circular Wait Detected in Graph'}
                 </h3>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/80 border border-amber-200 text-amber-900 font-bold">
-                  {edges.length} Total Edges Active
+                  {edges.length} Active Edges Shown
                 </span>
               </div>
               <p className="leading-relaxed">{cycleResult.educationalNote}</p>
